@@ -30,7 +30,9 @@ code(r"""
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"   # Unsloth : un seul GPU
 !pip install -q unsloth
-!pip install -q --upgrade "datasets>=3.0" huggingface_hub
+# garder des versions compatibles avec unsloth-zoo (datasets < 4.4, huggingface_hub < 2)
+!pip install -q "datasets>=3.4.1,<4.4" "huggingface_hub<2.0"
+!pip list 2>/dev/null | grep -E "^(unsloth|unsloth_zoo|transformers|trl|datasets|huggingface-hub|torch) "
 """)
 
 code(r"""

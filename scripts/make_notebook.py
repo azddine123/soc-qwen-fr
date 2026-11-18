@@ -192,16 +192,19 @@ from trl import SFTTrainer, SFTConfig
 from unsloth.chat_templates import train_on_responses_only
 from unsloth import is_bfloat16_supported
 
-trainer = SFTTrainer(
-    model=model, tokenizer=tokenizer, train_dataset=train_ds,
-    args=SFTConfig(
-        dataset_text_field="text", max_seq_length=MAX_SEQ_LEN, packing=False,
-        per_device_train_batch_size=4, gradient_accumulation_steps=4,
-        num_train_epochs=EPOCHS, learning_rate=2e-4, warmup_ratio=0.03,
-        lr_scheduler_type="cosine", optim="adamw_8bit", weight_decay=0.01,
-        fp16=not is_bfloat16_supported(), bf16=is_bfloat16_supported(),
-        logging_steps=10, save_strategy="no", seed=SEED, output_dir="outputs", report_to="none"),
-)
+common = dict(dataset_text_field="text", packing=False,
+    per_device_train_batch_size=4, gradient_accumulation_steps=4,
+    num_train_epochs=EPOCHS, learning_rate=2e-4, warmup_ratio=0.03,
+    lr_scheduler_type="cosine", optim="adamw_8bit", weight_decay=0.01,
+    fp16=not is_bfloat16_supported(), bf16=is_bfloat16_supported(),
+    logging_steps=10, save_strategy="no", seed=SEED, output_dir="outputs", report_to="none")
+# compatibilité entre versions de TRL (max_length / processing_class vs anciens noms)
+try:
+    trainer = SFTTrainer(model=model, processing_class=tokenizer, train_dataset=train_ds,
+                         args=SFTConfig(max_length=MAX_SEQ_LEN, **common))
+except TypeError:
+    trainer = SFTTrainer(model=model, tokenizer=tokenizer, train_dataset=train_ds,
+                         args=SFTConfig(max_seq_length=MAX_SEQ_LEN, **common))
 # on n'entraîne que sur la réponse de l'assistant
 trainer = train_on_responses_only(trainer, instruction_part="<|im_start|>user\n", response_part="<|im_start|>assistant\n")
 stats = trainer.train()

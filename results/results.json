@@ -1,0 +1,19 @@
+{
+  "base": {
+    "global": {"n": 200, "json_valide": 0.345, "verdict_ok": 0.83, "technique_exacte": 0.145, "technique_parent": 0.171, "tactique_ok": 0.0},
+    "benin": {"n": 7, "json_valide": 0.714, "verdict_ok": 0.429},
+    "reel": {"n": 123, "json_valide": 0.333, "verdict_ok": 0.862, "technique_exacte": 0.179, "technique_parent": 0.211, "tactique_ok": 0.0},
+    "synthetique": {"n": 70, "json_valide": 0.329, "verdict_ok": 0.814, "technique_exacte": 0.086, "technique_parent": 0.1, "tactique_ok": 0.0}
+  },
+  "fine_tune": {
+    "global": {"n": 200, "json_valide": 0.965, "verdict_ok": 1.0, "technique_exacte": 0.202, "technique_parent": 0.28, "tactique_ok": 0.321},
+    "benin": {"n": 7, "json_valide": 1.0, "verdict_ok": 1.0},
+    "reel": {"n": 123, "json_valide": 0.943, "verdict_ok": 1.0, "technique_exacte": 0.244, "technique_parent": 0.333, "tactique_ok": 0.358},
+    "synthetique": {"n": 70, "json_valide": 1.0, "verdict_ok": 1.0, "technique_exacte": 0.129, "technique_parent": 0.186, "tactique_ok": 0.257}
+  },
+  "train_loss": 0.2235214779985712,
+  "n_train": 6002,
+  "n_eval": 200,
+  "base_model": "unsloth/Qwen3-4B-Instruct-2507",
+  "run": "Kaggle GPU T4, version 1, 6533 s"
+}

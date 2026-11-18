@@ -61,7 +61,35 @@ dont 13 jamais vues en train).
 - **Technique (parent)** : même technique parente (ex. T1003 pour T1003.001) ;
 - **Tactique** : identifiant TA correct.
 
-Les résultats sont publiés dans la fiche du modèle sur Hugging Face et dans `results/`.
+### Résultats (run Kaggle T4, 1 époque, 6 002 exemples, ~1 h 50)
+
+Évaluation sur 200 exemples de test issus de règles Sigma **jamais vues** à l'entraînement
+(123 événements réels, 70 synthétiques, 7 bénins). Détail : `results/results.json`.
+
+**Événements réels (n = 123)**
+
+| Modèle | JSON valide | Verdict | Technique exacte | Technique (parent) | Tactique (ID TA) |
+|---|---|---|---|---|---|
+| Qwen3-4B-Instruct (base) | 33,3 % | 86,2 % | 17,9 % | 21,1 % | 0 % |
+| **SOC-Qwen-FR (fine-tuné)** | **94,3 %** | **100 %** | **24,4 %** | **33,3 %** | **35,8 %** |
+
+**Ensemble du test (n = 200)**
+
+| Modèle | JSON valide | Verdict | Technique exacte | Technique (parent) | Tactique (ID TA) |
+|---|---|---|---|---|---|
+| Qwen3-4B-Instruct (base) | 34,5 % | 83,0 % | 14,5 % | 17,1 % | 0 % |
+| **SOC-Qwen-FR (fine-tuné)** | **96,5 %** | **100 %** | **20,2 %** | **28,0 %** | **32,1 %** |
+
+Lecture :
+- le gain le plus net est sur le **format** (JSON exploitable 33 % → 94 %) et le **verdict** (100 %) : le modèle
+  devient intégrable dans un pipeline SOC ;
+- l'identification de la technique progresse (+6,5 points exacte, +12 points parente sur les logs réels) mais reste
+  difficile : 270 techniques, règles de test inédites, et une seule époque sur un petit modèle ;
+- la tactique « 0 % » du modèle de base vient surtout de la métrique, qui exige l'identifiant TA (le modèle de base
+  donne le nom de la tactique sans identifiant).
+
+Pistes d'amélioration : ajouter une étape de **RAG** sur la base ATT&CK (récupérer les techniques candidates avant la
+génération), 2 à 3 époques, davantage d'événements réels, et un modèle plus grand (Qwen3.5-9B).
 
 ## Reproduire
 

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: soc-qwen-fr
+    runtime: python
+    plan: free
+    rootDir: deploy/render
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: SPACE_ID
+        value: AZAS123/soc-qwen-fr
+      - key: HF_TOKEN
+        sync: false

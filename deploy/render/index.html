@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOC-Qwen-FR — triage d'alertes Windows</title>
+<style>
+  :root { --bg:#0b1220; --panel:#121a2b; --line:#24304a; --text:#e6ebf5; --muted:#8b97b0;
+          --accent:#4f8cff; --red:#ff5d5d; --orange:#ffa94d; --yellow:#ffd43b; --green:#40c057; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:28px 24px 8px; max-width:1200px; margin:auto; }
+  h1 { margin:0; font-size:26px; } h1 span { color:var(--accent); }
+  header p { color:var(--muted); margin:6px 0 0; }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:20px; padding:20px 24px 40px; max-width:1200px; margin:auto; }
+  @media (max-width:900px) { main { grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; }
+  .panel h2 { margin:0 0 12px; font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  textarea { width:100%; min-height:330px; background:#0a101c; color:var(--text); border:1px solid var(--line);
+             border-radius:8px; padding:12px; font:13px/1.45 ui-monospace,Consolas,monospace; resize:vertical; }
+  .examples { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+  .chip { background:transparent; color:var(--text); border:1px solid var(--line); border-radius:999px; padding:6px 12px; cursor:pointer; font-size:13px; }
+  .chip:hover { border-color:var(--accent); }
+  button.go { width:100%; background:var(--accent); color:white; border:0; border-radius:8px; padding:12px; font-size:15px; font-weight:600; cursor:pointer; }
+  button.go:disabled { opacity:.6; cursor:wait; }
+  .empty { color:var(--muted); text-align:center; padding:80px 10px; }
+  .verdict { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .badge { padding:6px 12px; border-radius:6px; font-weight:700; font-size:14px; }
+  .suspect { background:rgba(255,93,93,.15); color:var(--red); } .benin { background:rgba(64,192,87,.15); color:var(--green); }
+  .sev { font-size:13px; color:var(--muted); }
+  .grid { display:grid; grid-template-columns:130px 1fr; gap:8px 12px; font-size:14px; margin-bottom:16px; }
+  .grid div:nth-child(odd) { color:var(--muted); }
+  .grid a { color:var(--accent); text-decoration:none; font-weight:600; }
+  .expl { line-height:1.55; font-size:14px; margin-bottom:14px; }
+  ul { margin:0; padding-left:20px; line-height:1.7; font-size:14px; }
+  details { margin-top:16px; color:var(--muted); font-size:13px; }
+  pre { white-space:pre-wrap; background:#0a101c; padding:10px; border-radius:8px; font-size:12px; }
+  .err { color:var(--orange); }
+  footer { text-align:center; color:var(--muted); font-size:12px; padding-bottom:30px; }
+  footer a { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>SOC-<span>Qwen</span>-FR</h1>
+  <p>Triage d'alertes Windows en français : un Qwen3-4B fine-tuné (QLoRA) identifie la technique MITRE ATT&amp;CK, la tactique et les actions à mener.</p>
+</header>
+<main>
+  <section class="panel">
+    <h2>Événement Windows (JSON)</h2>
+    <textarea id="event" spellcheck="false" placeholder='{"Channel": "Microsoft-Windows-Sysmon/Operational", "EventID": 1, "Image": "...", "CommandLine": "..."}'></textarea>
+    <div class="examples" id="examples"></div>
+    <button class="go" id="go">Analyser</button>
+  </section>
+  <section class="panel">
+    <h2>Triage</h2>
+    <div id="result"><div class="empty">Collez un événement ou choisissez un exemple, puis cliquez sur « Analyser ».<br><br>Le modèle tourne sur un CPU gratuit : une analyse prend 30 à 90 secondes.</div></div>
+  </section>
+</main>
+<footer>Données : SigmaHQ (DRL 1.1) et MITRE ATT&amp;CK · Usage défensif uniquement · <a href="https://github.com/azddine123/soc-qwen-fr">Code source</a></footer>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+fetch("/api/examples").then(r => r.json()).then(list => {
+  list.forEach(ex => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = ex.label;
+    b.onclick = () => { $("event").value = JSON.stringify(ex.event, null, 2); };
+    $("examples").appendChild(b);
+  });
+});
+function attackUrl(id) { return "https://attack.mitre.org/techniques/" + id.replace(".", "/") + "/"; }
+function render(t) {
+  if (t.brut !== undefined) return `<p class="err">Réponse non structurée :</p><pre>${esc(t.brut)}</pre>`;
+  const benin = (t.verdict || "").toLowerCase().startsWith("b");
+  let h = `<div class="verdict"><span class="badge ${benin ? "benin" : "suspect"}">${benin ? "BÉNIN" : "SUSPECT"}</span>`
+        + `<span class="sev">Sévérité : <b>${esc(t.severite || "—")}</b></span></div>`;
+  if (!benin) {
+    h += `<div class="grid"><div>Technique</div><div>${t.technique_id ? `<a href="${attackUrl(t.technique_id)}" target="_blank" rel="noopener">${esc(t.technique_id)}</a> — ` : ""}${esc(t.technique)}</div>`
+       + `<div>Tactique</div><div>${esc(t.tactique)}</div></div>`;
+  }
+  h += `<div class="expl">${esc(t.explication)}</div>`;
+  if (Array.isArray(t.recommandations) && t.recommandations.length)
+    h += `<b>Recommandations</b><ul>${t.recommandations.map(r => `<li>${esc(r)}</li>`).join("")}</ul>`;
+  h += `<details><summary>JSON brut</summary><pre>${esc(JSON.stringify(t, null, 2))}</pre></details>`;
+  return h;
+}
+$("go").onclick = async () => {
+  const txt = $("event").value.trim();
+  if (!txt) return;
+  let event = txt; try { event = JSON.parse(txt); } catch (e) {}
+  $("go").disabled = true; $("go").textContent = "Analyse en cours…";
+  $("result").innerHTML = '<div class="empty">Analyse en cours… (30 à 90 s, plus si le modèle se réveille)</div>';
+  try {
+    const r = await fetch("/api/triage", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({event})});
+    const data = await r.json();
+    $("result").innerHTML = r.ok ? render(data) : `<p class="err">${esc(data.detail || "Erreur")}</p>`;
+  } catch (e) {
+    $("result").innerHTML = `<p class="err">Erreur réseau : ${esc(e.message)}</p>`;
+  } finally { $("go").disabled = false; $("go").textContent = "Analyser"; }
+};
+</script>
+</body>
+</html>

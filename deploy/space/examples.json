@@ -1,0 +1,67 @@
+[
+ {
+  "label": "Mimikatz (vol d'identifiants)",
+  "event": {
+   "Channel": "Microsoft-Windows-Sysmon/Operational",
+   "EventID": 1,
+   "Computer": "SigmaCatchVm",
+   "TimeCreated": "2026-08-12T17:14:43.0663010Z",
+   "Image": "C:\\Windows\\System32\\cmd.exe",
+   "Description": "Windows Command Processor",
+   "Product": "Microsoft® Windows® Operating System",
+   "Company": "Microsoft Corporation",
+   "OriginalFileName": "Cmd.Exe",
+   "CommandLine": "\"cmd.exe\" /c C:\\AtomicRedTeam\\atomics\\..\\ExternalPayloads\\x64\\mimikatz.exe \"sekurlsa::minidump %%tmp%%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit",
+   "CurrentDirectory": "C:\\Users\\frack113\\AppData\\Local\\Temp\\",
+   "User": "SigmaCatchVm\\frack113",
+   "IntegrityLevel": "High",
+   "ParentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+   "ParentCommandLine": "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\"",
+   "ParentUser": "SigmaCatchVm\\frack113"
+  }
+ },
+ {
+  "label": "Clichés instantanés (vssadmin)",
+  "event": {
+   "Channel": "Microsoft-Windows-Sysmon/Operational",
+   "EventID": 1,
+   "Computer": "SigmaCatchVm",
+   "TimeCreated": "2026-08-30T15:06:41.9494762Z",
+   "Image": "C:\\Windows\\System32\\vssadmin.exe",
+   "Description": "Command Line Interface for Microsoft® Volume Shadow Copy Service",
+   "Product": "Microsoft® Windows® Operating System",
+   "Company": "Microsoft Corporation",
+   "OriginalFileName": "VSSADMIN.EXE",
+   "CommandLine": "vssadmin.exe  create shadow /for=C:",
+   "CurrentDirectory": "C:\\Users\\frack113\\AppData\\Local\\Temp\\",
+   "User": "SigmaCatchVm\\frack113",
+   "IntegrityLevel": "High",
+   "ParentImage": "C:\\Windows\\System32\\cmd.exe",
+   "ParentCommandLine": "\"cmd.exe\" /c vssadmin.exe create shadow /for=C:",
+   "ParentUser": "SigmaCatchVm\\frack113"
+  }
+ },
+ {
+  "label": "Capture réseau PowerShell",
+  "event": {
+   "Channel": "Microsoft-Windows-PowerShell/Operational",
+   "EventID": 4104,
+   "Computer": "SigmaCatchVm",
+   "TimeCreated": "2026-08-08T07:36:07.1921935Z",
+   "MessageNumber": 1,
+   "MessageTotal": 1,
+   "ScriptBlockText": "& {New-NetEventSession -Name Capture007 -LocalFilePath \"$ENV:Temp\\sniff.etl\"\nAdd-NetEventPacketCaptureProvider -SessionName Capture007 -TruncationLength 100\nStart-NetEventSession -Name Capture007\nStop-NetEventSession -Name Capture007\nRemove-NetEventSession -Name Capture007}",
+   "ScriptBlockId": "188b9281-0eb9-4a43-8087-b3d24113006f"
+  }
+ },
+ {
+  "label": "Requête DNS légitime",
+  "event": {
+   "Computer": "WS-026.corp.local",
+   "Channel": "Microsoft-Windows-Sysmon/Operational",
+   "EventID": 22,
+   "Image": "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+   "QueryName": "www.ensabm.ac.ma"
+  }
+ }
+]

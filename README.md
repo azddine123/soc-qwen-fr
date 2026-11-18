@@ -75,6 +75,21 @@ python scripts/make_notebook.py   # régénère le notebook
 
 Puis importer `notebooks/train_kaggle.ipynb` dans Kaggle (GPU + Internet activés, secret `HF_TOKEN`).
 
+## Déploiement (100 % gratuit)
+
+| Brique | Hébergement | Dossier |
+|---|---|---|
+| Entraînement + évaluation | Kaggle (GPU T4) | `notebooks/train_kaggle.ipynb` |
+| Publication (LoRA, GGUF, dataset, Space) | Kaggle | `notebooks/publish_kaggle.ipynb` |
+| Modèle GGUF `q4_k_m` + API Gradio `/triage` | Hugging Face Space (CPU) | `deploy/space/` |
+| Interface web + API REST `POST /api/triage` | Render (offre gratuite) | `deploy/render/`, `render.yaml` |
+
+```bash
+curl -X POST https://<service>.onrender.com/api/triage \
+  -H "Content-Type: application/json" \
+  -d '{"event": {"Channel": "Microsoft-Windows-Sysmon/Operational", "EventID": 1, "Image": "C:\\Windows\\System32\\vssadmin.exe", "CommandLine": "vssadmin.exe delete shadows /all /quiet"}}'
+```
+
 ## Limites
 
 - Les événements synthétiques sont générés à partir des règles : ils sont plus « propres » que des logs réels.

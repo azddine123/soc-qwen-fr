@@ -50,10 +50,16 @@ SEED         = 42
 """)
 
 code(r"""
-from kaggle_secrets import UserSecretsClient
+# Le token Hugging Face est optionnel : sans lui, tout est sauvegardé dans /kaggle/working
 from huggingface_hub import login
-HF_TOKEN = UserSecretsClient().get_secret("HF_TOKEN")
-login(token=HF_TOKEN)
+try:
+    from kaggle_secrets import UserSecretsClient
+    HF_TOKEN = UserSecretsClient().get_secret("HF_TOKEN")
+    login(token=HF_TOKEN)
+    print("Connecté à Hugging Face")
+except Exception as e:
+    HF_TOKEN = None
+    print("Pas de secret HF_TOKEN : la publication sur Hugging Face sera ignorée.")
 """)
 
 code(r"""
@@ -63,6 +69,7 @@ ds = load_dataset("json", data_files={"train": "soc-qwen-fr/data/train.jsonl", "
 print(ds)
 # publication du dataset sur le Hub (privé par défaut)
 try:
+    assert HF_TOKEN, "pas de token"
     ds.push_to_hub(DATASET_REPO, private=True, token=HF_TOKEN)
     print("Dataset publié :", DATASET_REPO)
 except Exception as e:
@@ -263,20 +270,27 @@ Usage défensif uniquement. Les explications sont générées à partir de gabar
 technique sur des comportements rares et doit rester un outil d'aide à l'analyste, pas un système de décision
 autonome. Code : {REPO_URL}
 '''
-model.push_to_hub(LORA_REPO, private=True, token=HF_TOKEN)
-tokenizer.push_to_hub(LORA_REPO, private=True, token=HF_TOKEN)
-from huggingface_hub import HfApi
-api = HfApi(token=HF_TOKEN)
-api.upload_file(path_or_fileobj=card.encode(), path_in_repo="README.md", repo_id=LORA_REPO)
+# sauvegarde locale (toujours) — récupérable dans l'onglet Output de Kaggle
+OUT = "soc-qwen3-4b-fr-lora"
+model.save_pretrained(OUT); tokenizer.save_pretrained(OUT)
+open(f"{OUT}/README.md", "w").write(card)
+import shutil
 for f in ("results.json", "pred_base.jsonl", "pred_finetune.jsonl"):
-    api.upload_file(path_or_fileobj=f, path_in_repo=f"eval/{f}", repo_id=LORA_REPO)
-print("Adaptateur publié :", LORA_REPO)
+    os.makedirs(f"{OUT}/eval", exist_ok=True); shutil.copy(f, f"{OUT}/eval/{f}")
+print("Adaptateur sauvegardé dans /kaggle/working/" + OUT)
+if HF_TOKEN:
+    from huggingface_hub import HfApi
+    api = HfApi(token=HF_TOKEN)
+    api.create_repo(LORA_REPO, private=True, exist_ok=True)
+    api.upload_folder(folder_path=OUT, repo_id=LORA_REPO)
+    print("Adaptateur publié :", LORA_REPO)
 print(table)
 """)
 
 code(r"""
 # ---------------- 5) Version GGUF (pour Ollama / llama.cpp) — optionnelle
 try:
+    assert HF_TOKEN, "pas de token Hugging Face"
     model.push_to_hub_gguf(GGUF_REPO, tokenizer, quantization_method="q4_k_m", token=HF_TOKEN, private=True)
     print("GGUF publié :", GGUF_REPO)
 except Exception as e:

@@ -1,5 +1,10 @@
 # SOC-Qwen-FR
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/azddine123/soc-qwen-fr/blob/main/notebooks/demo_colab.ipynb)
+[![Modèle](https://img.shields.io/badge/🤗-soc--qwen3--4b--fr--lora-yellow)](https://huggingface.co/AZAS123/soc-qwen3-4b-fr-lora)
+[![GGUF](https://img.shields.io/badge/🤗-GGUF%20Q4__K__M-yellow)](https://huggingface.co/AZAS123/soc-qwen3-4b-fr-GGUF)
+[![Dataset](https://img.shields.io/badge/🤗-soc--triage--fr-yellow)](https://huggingface.co/datasets/AZAS123/soc-triage-fr)
+
 **Fine-tuning de Qwen3-4B pour le triage d'alertes SOC en français.**
 
 À partir d'un événement Windows brut (Sysmon, Security, PowerShell, Defender…), le modèle renvoie un triage structuré :
@@ -15,6 +20,15 @@
   "recommandations": ["Réinitialiser les mots de passe des comptes potentiellement exposés", "…"]
 }
 ```
+
+## Essayer
+
+- **Dans le navigateur (GPU gratuit)** : bouton *Open in Colab* ci-dessus → `Exécution → Tout exécuter`
+  (GPU T4). Une interface Gradio s'ouvre avec un lien public partageable.
+- **En local avec Ollama** :
+  ```bash
+  ollama run hf.co/AZAS123/soc-qwen3-4b-fr-GGUF
+  ```
 
 ## Pourquoi ce projet
 
@@ -109,8 +123,9 @@ Puis importer `notebooks/train_kaggle.ipynb` dans Kaggle (GPU + Internet activé
 |---|---|---|
 | Entraînement + évaluation | Kaggle (GPU T4) | `notebooks/train_kaggle.ipynb` |
 | Publication (LoRA, GGUF, dataset, Space) | Kaggle | `notebooks/publish_kaggle.ipynb` |
-| Modèle GGUF `q4_k_m` + API Gradio `/triage` | Hugging Face Space (CPU) | `deploy/space/` |
-| Interface web + API REST `POST /api/triage` | Render (offre gratuite) | `deploy/render/`, `render.yaml` |
+| Démo interactive (Gradio, GPU T4) | Google Colab | `notebooks/demo_colab.ipynb` |
+| Modèle GGUF `q4_k_m` + API Gradio `/triage` | Hugging Face Space (nécessite HF PRO) | `deploy/space/` |
+| Interface web + API REST `POST /api/triage` | Render (appelle le Space) | `deploy/render/`, `render.yaml` |
 
 ```bash
 curl -X POST https://<service>.onrender.com/api/triage \

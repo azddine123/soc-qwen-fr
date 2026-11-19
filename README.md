@@ -23,6 +23,10 @@
 
 ## Essayer
 
+- **Console web** : https://azddine123.github.io/soc-qwen-fr/ — tableau de bord SOC (verdict, technique ATT&CK,
+  chaîne d'attaque, historique, export CSV/JSON). Deux moteurs : le modèle exécuté **dans le navigateur**
+  (WebAssembly/WebGPU, aucune donnée envoyée) ou la démo **Colab** connectée par son lien `gradio.live`.
+
 - **Dans le navigateur (GPU gratuit)** : bouton *Open in Colab* ci-dessus → `Exécution → Tout exécuter`
   (GPU T4). Une interface Gradio s'ouvre avec un lien public partageable.
 - **En local avec Ollama** :

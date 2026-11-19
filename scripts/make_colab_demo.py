@@ -14,6 +14,8 @@ la tactique, la sévérité, une explication et des recommandations.
 **Mode d'emploi :** `Exécution → Modifier le type d'exécution → GPU T4`, puis `Exécution → Tout exécuter`.
 Après ~3 minutes, une interface apparaît en bas de page (avec un lien public partageable).
 
+**Console web :** copiez le lien `https://….gradio.live` dans le mode « Serveur Colab » de la console [azddine123.github.io/soc-qwen-fr](https://azddine123.github.io/soc-qwen-fr/).
+
 Modèle : [AZAS123/soc-qwen3-4b-fr-lora](https://huggingface.co/AZAS123/soc-qwen3-4b-fr-lora) ·
 Code : [github.com/azddine123/soc-qwen-fr](https://github.com/azddine123/soc-qwen-fr)
 """)
@@ -82,7 +84,7 @@ with gr.Blocks(title="SOC-Qwen-FR") as demo:
     with gr.Row():
         inp = gr.Code(label="Événement Windows (JSON)", language="json", lines=14)
         out = gr.Code(label="Triage", language="json", lines=14)
-    gr.Button("Analyser", variant="primary").click(triage, inp, out)
+    gr.Button("Analyser", variant="primary").click(triage, inp, out, api_name="triage")
     gr.Examples([[json.dumps(e, ensure_ascii=False, indent=1)] for _, e in EXEMPLES], inputs=inp,
                 example_labels=[l for l, _ in EXEMPLES])
 demo.launch(share=True, debug=False)

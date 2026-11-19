@@ -23,7 +23,7 @@
 
 ## Essayer
 
-- **Console web** : https://azddine123.github.io/soc-qwen-fr/ — tableau de bord SOC (verdict, technique ATT&CK,
+- **Console web** : https://azddineelhamdaoui.engineer/soc-qwen-fr/ — tableau de bord SOC (verdict, technique ATT&CK,
   chaîne d'attaque, historique, export CSV/JSON). Deux moteurs : le modèle exécuté **dans le navigateur**
   (WebAssembly/WebGPU, aucune donnée envoyée) ou la démo **Colab** connectée par son lien `gradio.live`.
 

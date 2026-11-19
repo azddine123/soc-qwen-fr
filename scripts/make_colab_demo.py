@@ -14,7 +14,7 @@ la tactique, la sévérité, une explication et des recommandations.
 **Mode d'emploi :** `Exécution → Modifier le type d'exécution → GPU T4`, puis `Exécution → Tout exécuter`.
 Après ~3 minutes, une interface apparaît en bas de page (avec un lien public partageable).
 
-**Console web :** copiez le lien `https://….gradio.live` dans le mode « Serveur Colab » de la console [azddine123.github.io/soc-qwen-fr](https://azddine123.github.io/soc-qwen-fr/).
+**Console web :** copiez le lien `https://….gradio.live` dans le mode « Serveur Colab » de la console [azddine123.github.io/soc-qwen-fr](https://azddineelhamdaoui.engineer/soc-qwen-fr/).
 
 Modèle : [AZAS123/soc-qwen3-4b-fr-lora](https://huggingface.co/AZAS123/soc-qwen3-4b-fr-lora) ·
 Code : [github.com/azddine123/soc-qwen-fr](https://github.com/azddine123/soc-qwen-fr)
